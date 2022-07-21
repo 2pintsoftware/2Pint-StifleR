@@ -61,7 +61,8 @@ $signalrport = 1414
 
 #Typically a FSP server with BITS server extensions on
 $reportServer = "2PS2PXE.2PINT.LOCAL" # TODO potentially get this from the client config xml
-$reportServerPort = 80
+$reportServerProtocol = "https"
+$reportServerPort = 443
 
 #Section below should not require any changes
 
@@ -429,7 +430,7 @@ if($report -eq $true -and $shouldConnectNetwork -eq $true)
 
     $reportFile = "$($reportTimeString)_$($env:ComputerName)_$($mainIssue)_health.json"
     $reportFullFile = "$($env:ProgramData)\2Pint Software\StifleR\Client\$reportFile"
-    $destinationUrl = "http://$($reportServer):$($reportServerPort)/StifleRHealth/$reportFile";
+    $destinationUrl = "$($reportServerProtocol)://$($reportServer):$($reportServerPort)/StifleRHealth/$reportFile";
 
     #ConvertTo-Json -InputObject $reportObject | ConvertTo-SecureString -Key $encryptkey | ConvertFrom-SecureString | Out-File -FilePath $reportFullFile -Force
     ConvertTo-Json -InputObject $reportObject | Out-File -FilePath $reportFullFile -Force
