@@ -43,9 +43,9 @@ function Stop-MeasureCpu{
     # calculate cpu time
     # NOTE: CPU time is per CORE, so divide by available CORES to get total average CPU time
     [PSCustomObject]@{
-        TotalPercent = [Math]::Round(($EndSnapshot.PercentProcessorTime - $StartSnapshot.PercentProcessorTime)/$time*100/$cores,1)
-        UserPercent = [Math]::Round(($EndSnapshot.PercentUserTime - $StartSnapshot.PercentUserTime)/$time*100/$cores,1)
-        PrivilegedPercent = [Math]::Round(($EndSnapshot.PercentPrivilegedTime - $StartSnapshot.PercentPrivilegedTime)/$time*100/$cores,1)
+        TotalPercent = [Math]::Round(($EndSnapshot.PercentProcessorTime - $StartSnapshot.PercentProcessorTime)/$time*100/$cores,2)
+        UserPercent = [Math]::Round(($EndSnapshot.PercentUserTime - $StartSnapshot.PercentUserTime)/$time*100/$cores,2)
+        PrivilegedPercent = [Math]::Round(($EndSnapshot.PercentPrivilegedTime - $StartSnapshot.PercentPrivilegedTime)/$time*100/$cores,2)
     }
 }
 
