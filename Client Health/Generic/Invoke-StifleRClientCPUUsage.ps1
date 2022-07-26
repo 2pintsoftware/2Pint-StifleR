@@ -1,31 +1,59 @@
-﻿$TimeInBetweenSamples = 15 # Seconds
-$NumberOfTests = '40' # four tests per minute = 10 minutes
+﻿# Script that monitor CPU usage of the StifleR Client over 10 minutes
+#
+# Credit goes to https://powershell.one who made these functions available under Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0) 
+# https://creativecommons.org/licenses/by/4.0/ 
+
 $AppName = "StifleR.ClientApp"
+$ProcessID = (Get-Process -Name $AppName).Id
 
-$i = 1
-[System.Collections.ArrayList]$CPUSamples = @()
-do {
-
-    $ProcessID = (Get-Process -Name $AppName).Id
-    $ProcessCPUInfo = Get-CimInstance -ClassName Win32_PerfRawData_PerfProc_Process -Filter "IDProcess = '$ProcessID'"
-    $StiflerCPU = $ProcessCPUInfo | Select Name, @{Name="PercentProcessorTime";Expression={($_.PercentProcessorTime/100000/100)/60}}
-
-    $obj = [PSCustomObject]@{
-
-        # Add values to arraylist
-        AppName = $AppName
-        CPUPercentage = $StiflerCPU.PercentProcessorTime
-            
-    }
-        
-    # Add the values
-    $CPUSamples.Add($obj)|Out-Null
-
-    # Sleep in between tests
-    Start-Sleep -Seconds $TimeInBetweenSamples
-$i++
+function Start-MeasureCpu {
+  [CmdletBinding()]
+  param
+  (
+    # default process id to powershells own process id:
+    [int]
+    $id = $pid
+  )
+  
+  # get snapshot and return it:
+  return Get-CimInstance -ClassName Win32_PerfRawData_PerfProc_Process -Filter "IDProcess=$id"
 }
-while ($i -le $NumberOfTests)
 
-$AverageCPUUsage = [math]::Round((($CPUSamples.CPUPercentage | Measure-Object -Average).Average),2)
-Write-Host "Average CPU Usage for $AppName is: $AverageCPUUsage percent"
+function Stop-MeasureCpu{
+  param
+  (
+    # submit the previously taken snapshot
+    [Parameter(Mandatory)]
+    [ciminstance]
+    $StartSnapshot
+  )
+  
+    # get the process id the initial snapshot was taken on:
+    $id = $StartSnapshot.IDProcess
+  
+    # get a second snapshot
+    $EndSnapshot = Get-CimInstance -ClassName Win32_PerfRawData_PerfProc_Process -Filter "IDProcess=$id"
+
+    # determine the time interval between the two snapshots in 100ns units:
+    $time = $EndSnapshot.Timestamp_Sys100NS - $StartSnapshot.Timestamp_Sys100NS
+   
+    # get the number of logical cpus
+    $cores = [Environment]::ProcessorCount
+   
+    # calculate cpu time
+    # NOTE: CPU time is per CORE, so divide by available CORES to get total average CPU time
+    [PSCustomObject]@{
+        TotalPercent = [Math]::Round(($EndSnapshot.PercentProcessorTime - $StartSnapshot.PercentProcessorTime)/$time*100/$cores,1)
+        UserPercent = [Math]::Round(($EndSnapshot.PercentUserTime - $StartSnapshot.PercentUserTime)/$time*100/$cores,1)
+        PrivilegedPercent = [Math]::Round(($EndSnapshot.PercentPrivilegedTime - $StartSnapshot.PercentPrivilegedTime)/$time*100/$cores,1)
+    }
+}
+
+# get a first snapshot
+$snap = Start-MeasureCpu -id $ProcessID
+
+# Wait 10 minutes
+Start-Sleep -Seconds 600
+
+# Once done, take a second snapshot and compare to the first
+Stop-MeasureCpu -StartSnapshot $snap
