@@ -1,6 +1,4 @@
-﻿# Script that monitor CPU usage of the StifleR Client over 10 minutes
-#
-# Credit goes to https://powershell.one who made these functions available under Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0) 
+﻿# Credit goes to https://powershell.one who made this code available under Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0) 
 # https://creativecommons.org/licenses/by/4.0/ 
 
 $AppName = "StifleR.ClientApp"
@@ -56,4 +54,5 @@ $snap = Start-MeasureCpu -id $ProcessID
 Start-Sleep -Seconds 600
 
 # Once done, take a second snapshot and compare to the first
-Stop-MeasureCpu -StartSnapshot $snap
+$Result = Stop-MeasureCpu -StartSnapshot $snap
+$Result.TotalPercent | Out-File -FilePath "C:\Windows\Temp\StiflerClientUsage.txt"
