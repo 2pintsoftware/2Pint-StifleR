@@ -158,7 +158,6 @@ If ($Defaults) {
     #Config defaults
     $VPNStrings = $FileContent["CONFIG"]["VPNStrings"]
     $ForceVPN = $FileContent["CONFIG"]["ForceVPN"]
-    $InstallETW = $FileContent["CONFIG"]["InstallETW"]
     $Logfile = $FileContent["CONFIG"]["Logfile"]
     $Features = $FileContent["CONFIG"]["Features"]
 
@@ -906,12 +905,9 @@ If (($VPNStrings) -or ($ForceVPN -eq 1) -or ($EnableBetaFeatures -eq $true)) {
 
 }
 #--------------------------------
-#Install Stifler ETW
+#Install Stifler ETW - REMOVED as client installs ETW by default
 #--------------------------------
-If (($InstallETW -eq 1) -and ($vermajor -eq 2) -and ($verminor -ge 7)) {
-    #write-debug "Installing ETW"
-    #Start-Process -FilePath  "C:\Program Files\2Pint Software\StifleR Client\stifler.clientapp.exe" /ietw
-}
+
 
 
 write-debug "Exiting - install complete"
