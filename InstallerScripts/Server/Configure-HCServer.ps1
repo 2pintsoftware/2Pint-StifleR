@@ -8,7 +8,6 @@
        Target server must already be configured as a BranchCache Hosted Cache server
        TODO:
         Logging?
-        Full HC server setup?
         Check status on completion (evt log etc)
 
     .USAGE
@@ -22,13 +21,14 @@
     CHANGE LOG: 
     1.0.0.0 : 27/04/2023  : Initial version of script 
     1.0.0.1 : 09/06/2023  : Fixed a couple of bugs and optimized some sloppy bits!
-
+    1.0.0.2 : 16/06/2023  : Added bits to setup BC and enable Hosted Server mode if not enabled
    
 
    .LINK
     https://2pintsoftware.com
 #>
-  
+#requires -runasadministrator
+
 #-------------------------------------
 #Set HC Policy Reg Keys
 #-------------------------------------
@@ -37,30 +37,57 @@ $RegPath = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\PeerDist\Download
 $HCRegPath = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\PeerDist\HostedCache'
  
 $ShowHttpUrl = netsh http show url
-$DeleteResCmd = {netsh http delete urlacl url=$urlToDelete}
+$DeleteResCmd = { netsh http delete urlacl url=$urlToDelete }
 # these 2variables below are used to set the HC server ports to correspond with the 2Pint StifleR client ports
-$BCPort=1337 #used for content retreival
-$HCPort=1339 #used by the client to offer content to the server
- 
- 
+$BCPort = 1337 #used for content retreival
+$HCPort = 1339 #used by the client to offer content to the server
+
+#-------------------------------------
+# Make sure PreReqs are set up
+#-------------------------------------
+
+if ((Get-WindowsFeature -Name BranchCache).Installed -eq $false) {
+    Write-Host "Installing BranchCache feature"
+    Install-WindowsFeature BranchCache -IncludeManagementTools -Verbose
+    # Start BC in distributed mode to complete setup.
+    invoke-command -scriptblock { netsh branchcache set service mode=DISTRIBUTED }
+    $reboot = $true
+}
+
+
+if ((Get-BCHostedCacheServerConfiguration).HostedCacheServerIsEnabled -eq $false) {
+    Write-Host "Enabling BC Hosted Cache Server"
+    Enable-BCHostedServer -Verbose 
+    $reboot = $true
+}
+
+$BCStatus = Get-BCStatus
+
+if (-not $BCStatus.BranchCacheIsEnabled -eq $true) { Write-Error "BranchCache is not enabled!"; break }
+if (-not $BCStatus.BranchCacheServiceStatus -eq "Running") { Write-Error "BranchCache is not running!"; break }
+if (-not $BCStatus.HostedCacheServerConfiguration.HostedCacheServerIsEnabled -eq $true) { Write-Error "HostedCacheServerIsEnabled is not enabled!"; break }
+
+$BCStatus = $null
+
+
 #---------------------------------------------------------------------------------------
 # Set the correct BranchCache ConnectPort/ListenPort in the registry
 #---------------------------------------------------------------------------------------
 # If the key doesn't exist - create it, and set the port, job done
  
-if (!(Get-Item -path $RegPath\Connection -ErrorAction SilentlyContinue)){
+if (!(Get-Item -path $RegPath\Connection -ErrorAction SilentlyContinue)) {
     New-Item -Path $RegPath -name Connection -force
     New-ItemProperty -Path $RegPath\Connection -Name ListenPort -PropertyType DWORD -Value $BCPort
     New-ItemProperty -Path $RegPath\Connection -Name ConnectPort -PropertyType DWORD -Value $BCPort
 }
  
 # If the key already exists, check the ListenPort value and change if required
-if((Get-ItemProperty -path $RegPath\Connection -Name ListenPort -ErrorAction SilentlyContinue).ListenPort -ne $BCPort){
+if ((Get-ItemProperty -path $RegPath\Connection -Name ListenPort -ErrorAction SilentlyContinue).ListenPort -ne $BCPort) {
     Set-ItemProperty -Path $RegPath\Connection -Name ListenPort -Value $BCPort
 }
  
 # If the key already exists, check the ConnectPort value and change if required
-if((Get-ItemProperty -path $RegPath\Connection -Name ConnectPort -ErrorAction SilentlyContinue).ConnectPort -ne $BCPort){
+if ((Get-ItemProperty -path $RegPath\Connection -Name ConnectPort -ErrorAction SilentlyContinue).ConnectPort -ne $BCPort) {
     Set-ItemProperty -Path $RegPath\Connection -Name ConnectPort -Value $BCPort
 }
  
@@ -71,19 +98,19 @@ if((Get-ItemProperty -path $RegPath\Connection -Name ConnectPort -ErrorAction Si
 #---------------------------------------------------------------------------------------
 # If the key doesn't exist - create it, and set the port, job done
  
-if (!(Get-Item -path $HCRegPath\Connection -ErrorAction SilentlyContinue)){
+if (!(Get-Item -path $HCRegPath\Connection -ErrorAction SilentlyContinue)) {
     New-Item -Path $HCRegPath -name Connection -force
     New-ItemProperty -Path $HCRegPath\Connection -Name HttpListenPort -PropertyType DWORD -Value $HCPort
     New-ItemProperty -Path $HCRegPath\Connection -Name HttpConnectPort -PropertyType DWORD -Value $HCPort
 }
  
 # If the key already exists, check the ListenPort value and change if required
-if((Get-ItemProperty -path $HCRegPath\Connection -Name HttpListenPort -ErrorAction SilentlyContinue).ListenPort -ne $HCPort){
+if ((Get-ItemProperty -path $HCRegPath\Connection -Name HttpListenPort -ErrorAction SilentlyContinue).ListenPort -ne $HCPort) {
     Set-ItemProperty -Path $HCRegPath\Connection -Name HttpListenPort -Value $HCPort
 }
  
 # If the key already exists, check the ConnectPort value and change if required
-if((Get-ItemProperty -path $HCRegPath\Connection -Name HttpConnectPort -ErrorAction SilentlyContinue).ConnectPort -ne $HCPort){
+if ((Get-ItemProperty -path $HCRegPath\Connection -Name HttpConnectPort -ErrorAction SilentlyContinue).ConnectPort -ne $HCPort) {
     Set-ItemProperty -Path $HCRegPath\Connection -Name HttpConnectPort -Value $HCPort
 }
 # END Set the correct BranchCache HOSTED CACHE  ConnectPort/ListenPort in the registry
@@ -93,42 +120,47 @@ if((Get-ItemProperty -path $HCRegPath\Connection -Name HttpConnectPort -ErrorAct
  
 # Checking for old obsolete port reservations - first, select all BranchCache url reservations
 $ResList = ($ShowHttpUrl | Select-String -SimpleMatch -Pattern "/116B50EB-ECE2-41ac-8429-9F9E963361B7/")
-$urlToDelete=$Null
+$urlToDelete = $Null
  
-ForEach($Res in $ResList){
+ForEach ($Res in $ResList) {
  
-$a = [regex]::Matches($Res, 'http(.*)')
-If($a -like "http://+:$BCPort*") {write-host " : Not deleting the current URL: $a"} 
-else {$urlToDelete=$a.Value.Trim()
-invoke-command -scriptblock $DeleteResCmd
-write-host " : Deleting the old URL: $a" }
+    $a = [regex]::Matches($Res, 'http(.*)')
+    If ($a -like "http://+:$BCPort*") { write-host " : Not deleting the current URL: $a" } 
+    else {
+        $urlToDelete = $a.Value.Trim()
+        invoke-command -scriptblock $DeleteResCmd
+        write-host " : Deleting the old URL: $a" 
+    }
  
 }
  
 # Checking for old obsolete port reservations - next, select all Hosted Cache BranchCache url reservations
 $ResList = ($ShowHttpUrl | Select-String -SimpleMatch -Pattern "/0131501b-d67f-491b-9a40-c4bf27bcb4d4/")
-$urlToDelete=$Null
+$urlToDelete = $Null
  
-ForEach($Res in $ResList){
+ForEach ($Res in $ResList) {
  
-$a = [regex]::Matches($Res, 'http(.*)')
-If($a -like "http://+:$HCPort*") {write-host " : Not deleting the current URL: $a"} 
-else {$urlToDelete=$a.Value.Trim()
-invoke-command -scriptblock $DeleteResCmd
-write-host " : Deleting the old URL: $a" }
+    $a = [regex]::Matches($Res, 'http(.*)')
+    If ($a -like "http://+:$HCPort*") { write-host " : Not deleting the current URL: $a" } 
+    else {
+        $urlToDelete = $a.Value.Trim()
+        invoke-command -scriptblock $DeleteResCmd
+        write-host " : Deleting the old URL: $a" 
+    }
  
 }
  
 # set the new port reservations
  
 #Hosted Cache port url
-invoke-command -scriptblock {netsh http add urlacl url=http://+:$HCPort/0131501b-d67f-491b-9a40-c4bf27bcb4d4/ user="NT AUTHORITY\NETWORK SERVICE"}
+invoke-command -scriptblock { netsh http add urlacl url=http://+:$HCPort/0131501b-d67f-491b-9a40-c4bf27bcb4d4/ user="NT AUTHORITY\NETWORK SERVICE" }
  
 #BranchCache port url
-invoke-command -scriptblock {netsh http add urlacl url=http://+:$BCPort/116B50EB-ECE2-41ac-8429-9F9E963361B7/ user="NT AUTHORITY\NETWORK SERVICE"}
+invoke-command -scriptblock { netsh http add urlacl url=http://+:$BCPort/116B50EB-ECE2-41ac-8429-9F9E963361B7/ user="NT AUTHORITY\NETWORK SERVICE" }
  
 #cycle the BC service
 restart-service BranchCache
- 
+
+if ($reboot) { Write-host "Please reboot the server" -ForegroundColor Yellow }
 #end script
 
