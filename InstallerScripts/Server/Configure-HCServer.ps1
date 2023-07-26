@@ -22,6 +22,7 @@
     1.0.0.0 : 27/04/2023  : Initial version of script 
     1.0.0.1 : 09/06/2023  : Fixed a couple of bugs and optimized some sloppy bits!
     1.0.0.2 : 16/06/2023  : Added bits to setup BC and enable Hosted Server mode if not enabled
+    1.0.0.3 : 24/07/2023  : Fix for WinPE clients
    
 
    .LINK
@@ -41,6 +42,7 @@ $DeleteResCmd = { netsh http delete urlacl url=$urlToDelete }
 # these 2variables below are used to set the HC server ports to correspond with the 2Pint StifleR client ports
 $BCPort = 1337 #used for content retreival
 $HCPort = 1339 #used by the client to offer content to the server
+$HCAuth='None' #If the Hosted Cache server will be used from WinPE this must be set to 'None' otherwise it should be set to 'Domain'. If not set it will default to "Domain"
 
 #-------------------------------------
 # Make sure PreReqs are set up
@@ -57,7 +59,13 @@ if ((Get-WindowsFeature -Name BranchCache).Installed -eq $false) {
 
 if ((Get-BCHostedCacheServerConfiguration).HostedCacheServerIsEnabled -eq $false) {
     Write-Host "Enabling BC Hosted Cache Server"
-    Enable-BCHostedServer -Verbose 
+    Enable-BCHostedServer -Verbose
+    if("None","Domain" -contains $HCAuth)
+    {
+        Write-Host "Setting BC Hosted Cache Server Authentication to '$HCAuth'" 
+        Set-BCAuthentication -Mode $HCAuth
+    }
+
     $reboot = $true
 }
 
