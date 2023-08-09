@@ -136,7 +136,10 @@ if (!$PSScriptRoot) { $PSScriptRoot = Split-Path $MyInvocation.MyCommand.Path -P
 #if the stifler version is 2.7 or higher we need a slightly different evt log query
 If (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient"-ErrorAction SilentlyContinue) {
     $ClientAppPath = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient").ImagePath -replace """", ""
-    if ($ClientAppPath -eq "C:\Windows\Temp\StifleR\StifleR.ClientApp.exe") { $StifleRClientTempInstallation = $true }
+    if ($ClientAppPath -eq "C:\Windows\Temp\StifleR\StifleR.ClientApp.exe") { 
+        $StifleRClientTempInstallation = $true 
+        Write-Debug "`$StifleRClientTempInstallation = $StifleRClientTempInstallation"
+        }
     $VerMajor = (Get-Command $ClientAppPath ).FileVersionInfo.FileMajorPart
     $VerMinor = (Get-Command $ClientAppPath ).FileVersionInfo.FileMinorPart
 }
@@ -399,8 +402,9 @@ If ($svcpath) {
 
         } until ((@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") -or $loopcounter -eq 12)
 
-        if (!$StifleRClientTempInstallation) {
+        if ($StifleRClientTempInstallation) {
             # if the client is installed under c:\Windows\Temp there will be no evntlog so waiting some extra time to make sure.
+            $(TimeStamp) + " Client is installed under c:\Windows\Temp there will be no evntlog so waiting some extra time to make sure." | Out-File -FilePath $Logfile -Append -Encoding ascii
             Start-Sleep -Seconds 15
         }
         else {
