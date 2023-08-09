@@ -21,8 +21,8 @@
    .NOTES
     AUTHOR: 2Pint Software
     EMAIL: support@2pintsoftware.com
-    VERSION: 2.0.0.3
-    DATE:05/06/2023
+    VERSION: 2.0.0.4
+    DATE:08/09/2023
     
     CHANGE LOG: 
     1.0.0.0 : 22/02/2018  : Initial version of script 
@@ -49,6 +49,7 @@
     2.0.0.1 : 26/10/2022  : Creates subfolder(s) to logfile if they are missing
     2.0.0.2 : 26/10/2022  : Bugfixes + check if the client is installed under C:\Windows\temp during OSD and skip eventlog queries.
     2.0.0.3 : 05/06/2023  : Bugfixes + Removed Install Stifler ETW Logic, handle by installer. 
+    2.0.0.4 : 08/09/2023  : Bugfix
 
    EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1  -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
    
