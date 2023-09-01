@@ -15,14 +15,15 @@
    .NOTES
     AUTHOR: 2Pint Software
     EMAIL: support@2pintsoftware.com
-    VERSION: 1.0.0.1
-    DATE:09/06/2023 
+    VERSION: 1.0.0.4
+    DATE:01/09/2023 
     
     CHANGE LOG: 
     1.0.0.0 : 27/04/2023  : Initial version of script 
     1.0.0.1 : 09/06/2023  : Fixed a couple of bugs and optimized some sloppy bits!
     1.0.0.2 : 16/06/2023  : Added bits to setup BC and enable Hosted Server mode if not enabled
     1.0.0.3 : 24/07/2023  : Fix for WinPE clients
+    1.0.0.4 : 24/07/2023  : Added support to set TTL for BC Content
    
 
    .LINK
@@ -36,13 +37,15 @@
  
 $RegPath = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\PeerDist\DownloadManager\Peers'
 $HCRegPath = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\PeerDist\HostedCache'
- 
+$TTLRegPath = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\PeerDist'
+
 $ShowHttpUrl = netsh http show url
 $DeleteResCmd = { netsh http delete urlacl url=$urlToDelete }
 # these 2variables below are used to set the HC server ports to correspond with the 2Pint StifleR client ports
 $BCPort = 1337 #used for content retreival
 $HCPort = 1339 #used by the client to offer content to the server
-$HCAuth='None' #If the Hosted Cache server will be used from WinPE this must be set to 'None' otherwise it should be set to 'Domain'. If not set it will default to "Domain"
+$HCAuth = 'None' #If the Hosted Cache server will be used from WinPE this must be set to 'None' otherwise it should be set to 'Domain'. If not set it will default to "Domain"
+$TTL = 365 # Number of Days content should stay in the BC Cache before being purged for being old.
 
 #-------------------------------------
 # Make sure PreReqs are set up
@@ -60,8 +63,7 @@ if ((Get-WindowsFeature -Name BranchCache).Installed -eq $false) {
 if ((Get-BCHostedCacheServerConfiguration).HostedCacheServerIsEnabled -eq $false) {
     Write-Host "Enabling BC Hosted Cache Server"
     Enable-BCHostedServer -Verbose
-    if("None","Domain" -contains $HCAuth)
-    {
+    if ("None", "Domain" -contains $HCAuth) {
         Write-Host "Setting BC Hosted Cache Server Authentication to '$HCAuth'" 
         Set-BCAuthentication -Mode $HCAuth
     }
@@ -77,6 +79,30 @@ if (-not $BCStatus.HostedCacheServerConfiguration.HostedCacheServerIsEnabled -eq
 
 $BCStatus = $null
 
+
+#---------------------------------------------------------------------------------------
+# Set the number of days to keep content in the cache in the registry
+#---------------------------------------------------------------------------------------
+# If the key doesn't exist - create it, and set the value, job done
+
+if ((Get-ItemProperty -path '$TTLRegPath\Retrieval' -Name SegmentTTL -ErrorAction SilentlyContinue).SegmentTTL -eq $TTL) {
+    Write-Host "BC Cache TTL setup correctly" 
+}
+else {
+    Write-Host "BC Cache TTL not setup correctly"
+
+    if (!(Get-Item -path $TTLRegPath\Retrieval -ErrorAction SilentlyContinue)) {
+        New-Item -Path $TTLRegPath -name Retrieval -force  
+        New-ItemProperty -Path $TTLRegPath\Retrieval -Name SegmentTTL -PropertyType DWORD -Value $TTL  
+    }
+    # If the key already exists, check the value and change if required
+    if (((Get-ItemProperty -path $TTLRegPath\Retrieval -Name SegmentTTL -ErrorAction SilentlyContinue).SegmentTTL) -ne $TTL) {
+        Set-ItemProperty -Path $TTLRegPath\Retrieval -Name SegmentTTL -Value $TTL  
+    }
+    Write-Host "BranchCache TTL Remediation Complete"
+}
+
+# END Set the number of days to keep content in the cache in the registry
 
 #---------------------------------------------------------------------------------------
 # Set the correct BranchCache ConnectPort/ListenPort in the registry
@@ -98,7 +124,6 @@ if ((Get-ItemProperty -path $RegPath\Connection -Name ListenPort -ErrorAction Si
 if ((Get-ItemProperty -path $RegPath\Connection -Name ConnectPort -ErrorAction SilentlyContinue).ConnectPort -ne $BCPort) {
     Set-ItemProperty -Path $RegPath\Connection -Name ConnectPort -Value $BCPort
 }
- 
 # END Set the correct BranchCache ConnectPort/ListenPort in the registry
  
 #---------------------------------------------------------------------------------------
@@ -123,8 +148,9 @@ if ((Get-ItemProperty -path $HCRegPath\Connection -Name HttpConnectPort -ErrorAc
 }
 # END Set the correct BranchCache HOSTED CACHE  ConnectPort/ListenPort in the registry
  
- 
+#---------------------------------------------------------------------------------------
 #Check for old URL reservations and delete if not matching the correct port number
+#---------------------------------------------------------------------------------------
  
 # Checking for old obsolete port reservations - first, select all BranchCache url reservations
 $ResList = ($ShowHttpUrl | Select-String -SimpleMatch -Pattern "/116B50EB-ECE2-41ac-8429-9F9E963361B7/")
