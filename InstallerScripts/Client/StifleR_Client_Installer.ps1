@@ -50,9 +50,10 @@
     2.0.0.2 : 26/10/2022  : Bugfixes + check if the client is installed under C:\Windows\temp during OSD and skip eventlog queries.
     2.0.0.3 : 05/06/2023  : Bugfixes + Removed Install Stifler ETW Logic, handle by installer. 
     2.0.0.4 : 08/09/2023  : Bugfix
-    2.0.0.5 : 12/15/2023  : Added support for configuring BranchCache Ports and improved service stop control
+    2.0.0.5 : 12/15/2023  : Added support for configuring BranchCache Ports
+    2.0.0.6 : 12/15/2023  : Added custom hook for detecting between production and preproduction environments
 
-   EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1  -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
+   EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1 -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
    
 
    .LINK
@@ -62,7 +63,8 @@ param (
     [string]$Defaults,
     [bool] $Uninstall = $false, #set to true for uninstall only
     [bool]$FullDebugMode = $false, #set to $true to turn on all debug logging to the max
-    [bool]$EnableBetaFeatures = $false, #set to $true to turn on any new features(added in the defaults .ini) 
+    [bool]$EnableBetaFeatures = $false, #set to $true to turn on any new features (added in the defaults .ini) 
+    [bool]$EnableSiteDetection = $false, # Set to $true to turn on any new features (added in the defaults .ini) 
     [Parameter(Mandatory = $false)][ValidateSet("SilentlyContinue", "Continue")][string]$DebugPreference
 )
 Function TimeStamp { $(Get-Date -UFormat "%D %T") }
@@ -171,6 +173,41 @@ If ($Defaults) {
     $GreenLeaderOfferPort = $FileContent["CONFIG"]["GreenLeaderOfferPort"]
     $BranchCachePortForGreenLeader = $FileContent["CONFIG"]["BranchCachePortForGreenLeader"]
 
+    # Read Prod and PreProd Servers if EnableSiteDetection is set to true
+    If($EnableSiteDetection -eq $true){
+        $ProductionStifleRServers = $FileContent["CONFIG"]["ProductionStifleRServers"]
+        $ProductionStifleRulezUrl = $FileContent["CONFIG"]["ProductionStifleRulezUrl"]
+        $PreProductionStifleRServers = $FileContent["CONFIG"]["PreProductionStifleRServers"]
+        $PreProductionStifleRulezUrl = $FileContent["CONFIG"]["PreProductionStifleRServers"]
+
+        # ---------------------------
+        # BEGIN CUSTOM SITE DETECTION
+        # --------------------------- 
+        $Domain = (Get-ChildItem env:USERDOMAIN).value
+
+        if ($Domain -eq "DOMAIN"){
+            $Production = $true
+            Write-Debug "Production variable set to true"
+        }
+        Else{
+            $Production = $false
+            Write-Debug "Production variable set to false"
+        } 
+
+        # ---------------------------
+        # END CUSTOM SITE DETECTION
+        # --------------------------- 
+
+        If ($Production -eq $true){
+            $STIFLERSERVERS = $ProductionStifleRServers 
+            $STIFLERULEZURL = $ProductionStifleRulezUrl
+        }
+        Else{
+            $STIFLERSERVERS = $PreProductionStifleRServers
+            $STIFLERULEZURL = $PreProductionStifleRulezUrl
+        }
+
+    }
 
     Write-Debug "Installation Folder: $INSTALLFOLDER"
     Write-Debug "StifleR Server(s): $STIFLERSERVERS"
