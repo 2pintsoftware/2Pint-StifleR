@@ -50,6 +50,7 @@
     2.0.0.2 : 26/10/2022  : Bugfixes + check if the client is installed under C:\Windows\temp during OSD and skip eventlog queries.
     2.0.0.3 : 05/06/2023  : Bugfixes + Removed Install Stifler ETW Logic, handle by installer. 
     2.0.0.4 : 08/09/2023  : Bugfix
+    2.0.0.5 : 12/15/2023  : Added support for configuring BranchCache Ports and improved service stop control
 
    EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1  -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
    
@@ -165,6 +166,11 @@ If ($Defaults) {
     $ForceVPN = $FileContent["CONFIG"]["ForceVPN"]
     $Logfile = $FileContent["CONFIG"]["Logfile"]
     $Features = $FileContent["CONFIG"]["Features"]
+    $BranchCachePort = $FileContent["CONFIG"]["BranchCachePort"]
+    $BlueLeaderProxyPort = $FileContent["CONFIG"]["BlueLeaderProxyPort"]
+    $GreenLeaderOfferPort = $FileContent["CONFIG"]["GreenLeaderOfferPort"]
+    $BranchCachePortForGreenLeader = $FileContent["CONFIG"]["BranchCachePortForGreenLeader"]
+
 
     Write-Debug "Installation Folder: $INSTALLFOLDER"
     Write-Debug "StifleR Server(s): $STIFLERSERVERS"
@@ -176,6 +182,10 @@ If ($Defaults) {
     Write-Debug "Force VPN?: $ForceVPN"
     Write-Debug "This script logs to: $Logfile"
     Write-Debug "New features will be added: $Features"
+    Write-Debug "BranchCachePort: $BranchCachePort"
+    Write-Debug "BlueLeaderProxyPort: $BlueLeaderProxyPort"
+    Write-Debug "GreenLeaderOfferPort: $GreenLeaderOfferPort"
+    Write-Debug "BranchCachePortForGreenLeader: $BranchCachePortForGreenLeader"
 }
 If ($Uninstall -eq $true) { $Logfile = "C:\Windows\Temp\StifleRClient.log" }
 write-debug $Uninstall
@@ -367,7 +377,7 @@ If ($svcpath) {
             $MSIInProgress = $False
         }
     } until(($MSIInProgress -eq $False) -or $LoopCounter -eq 120)
-    #quit after 10 mins
+    # quit after 10 mins
     #-----------------------------------------------------------
     #        END - Check for MSI Installs
     #-----------------------------------------------------------
@@ -404,8 +414,8 @@ If ($svcpath) {
         } until ((@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") -or $loopcounter -eq 12)
 
         if ($StifleRClientTempInstallation) {
-            # if the client is installed under c:\Windows\Temp there will be no evntlog so waiting some extra time to make sure.
-            $(TimeStamp) + " Client is installed under c:\Windows\Temp there will be no evntlog so waiting some extra time to make sure." | Out-File -FilePath $Logfile -Append -Encoding ascii
+            # if the client is installed under c:\Windows\Temp there will be no eventlog so waiting some extra time to make sure.
+            $(TimeStamp) + " Client is installed under c:\Windows\Temp there will be no eventlog so waiting some extra time to make sure." | Out-File -FilePath $Logfile -Append -Encoding ascii
             Start-Sleep -Seconds 15
         }
         else {
@@ -447,20 +457,64 @@ If ($svcpath) {
 
                 } until (($evt) -or $loopcounter -eq 15)
                 If (!$evt) {
-                    Write-Error "StifleR Service Stop Timed out - Exiting"
-                    $(TimeStamp) + "StifleR Service Stop Timed out - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
-                    Exit 1
+                    Write-Error "StifleR Service Stop Timed out - Continue to second check"
+                    $(TimeStamp) + "StifleR Service Stop Timed out - Continue to second check" | Out-File -FilePath $Logfile -Append -Encoding ascii
+                    # Exit 1
                 }
             }
             Else {
-                Write-Error "StifleR Service Stop Timed out - Exiting"
-                $(TimeStamp) + "StifleR Service Stop Timed out - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
-                Exit 1
+                Write-Error "StifleR Service Stop Timed out - Continue to second check"
+                $(TimeStamp) + "StifleR Service Stop Timed out - Continue to second check" | Out-File -FilePath $Logfile -Append -Encoding ascii
+                #Exit 1
             }
             write-debug "Shutdown Event detected - safe to continue"
             $(TimeStamp) + "Shutdown Event detected - safe to continue" | Out-File -FilePath $Logfile -Append -Encoding ascii
         }
     }
+
+    # Second check - Stop the service
+    $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
+    $State = $SvcStatus | Select-String "STATE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 }
+    $(TimeStamp) + "The current state of the service is: $State"
+    If($State -eq "STOPPED"){
+        $(TimeStamp) + "Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
+    }
+    Else {
+        $(TimeStamp) + "Service is running, trying to stop it." | Out-File -FilePath $Logfile -Append -Encoding ascii
+        Invoke-Command -ScriptBlock $SCStopCmd | Out-Null
+        $loopCounter=0
+        do 
+        { 
+            $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
+            $State = $SvcStatus | Select-String "STATE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 }
+            Start-Sleep -Seconds 5
+            $loopCounter++
+            $(TimeStamp) + "Waiting for Service to stop: $($loopcounter * 5) Seconds Elapsed" | Out-File -FilePath $Logfile -Append -Encoding ascii
+
+        } until (($State -eq "STOPPED") -or $loopcounter -eq 12)
+    
+        # Service should be stopped now, kill the process if its not
+        If($State -eq "STOPPED"){
+            $(TimeStamp) + "Second Check: Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+        Else{
+            $(TimeStamp) + "Service could not be stopped, stop the process." | Out-File -FilePath $Logfile -Append -Encoding ascii
+            Get-Process StifleR.ClientApp | Stop-Process -Force
+        }
+    }
+
+    # Final Check: Service should be stopped now, abort the script if its not
+    If($State -eq "STOPPED"){
+        $(TimeStamp) + "Final Check: Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
+    }
+    Else{
+        $(TimeStamp) + "Service could not be stopped, aborting script." | Out-File -FilePath $Logfile -Append -Encoding ascii
+        Break
+    }
+
+
+
+
     #-------------------------------------------
     #   END - Service shutdown
     #-------------------------------------------
@@ -796,6 +850,30 @@ If (($VPNStrings) -or ($ForceVPN -eq 1) -or ($EnableBetaFeatures -eq $true) -or 
             Set-AppSetting $StifleRConfig $key $a
         }
 
+        If ($BranchCachePort) {
+            Set-AppSetting $StifleRConfig "BranchCachePort" "$BranchCachePort"    
+            Write-Debug "Setting BranchCachePort in the app config"
+            $(TimeStamp) + "Setting BranchCachePort in the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
+        If ($BlueLeaderProxyPort) {
+            Set-AppSetting $StifleRConfig "BlueLeaderProxyPort" "$BlueLeaderProxyPort"    
+            Write-Debug "Setting BlueLeaderProxyPort in the app config"
+            $(TimeStamp) + "Setting BlueLeaderProxyPort in the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
+        If ($GreenLeaderOfferPort) {
+            Set-AppSetting $StifleRConfig "GreenLeaderOfferPort" "$GreenLeaderOfferPort"    
+            Write-Debug "Setting GreenLeaderOfferPort in the app config"
+            $(TimeStamp) + "Setting GreenLeaderOfferPort in the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
+        If ($BranchCachePortForGreenLeader) {
+            New-AppSetting $StifleRConfig "BranchCachePortForGreenLeader" "$BranchCachePortForGreenLeader"    
+            Write-Debug "Adding BranchCachePortForGreenLeader to the app config"
+            $(TimeStamp) + "Adding BranchCachePortForGreenLeader to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
         #enable all debug logging if that switch is $true
         If ($FullDebugMode -eq $true) {
             $xml = [xml](Get-Content $StifleRConfig)
@@ -810,6 +888,9 @@ If (($VPNStrings) -or ($ForceVPN -eq 1) -or ($EnableBetaFeatures -eq $true) -or 
             $xml.Save($StifleRConfig) #save the config
 
         }
+
+
+
 
         Write-Debug "Updated and saved the App.Config"
         $(TimeStamp) + "Updated and saved the App.Config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
