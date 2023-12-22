@@ -1,53 +1,76 @@
-<# 
+ï»¿<# 
    .SYNOPSIS 
-    Takes a snapshot or offline backup of the StifleR Server configuration and Databases
+    Takes a snapshot backup of the StifleR Server configuration and Databases
 
    .DESCRIPTION
    Creates a backup folder under the current StifleR data folder - using Time/Date stamp for the folder name
    Backs up the StifleR Databases using ESENTUTL.EXE
    Backs up the .config XML configuration file
+   Backs up the SQL History database
 
 
    .REQUIREMENTS
    Must be run as Admin
-   The DB backup will only work on Server 2016 or higher - contact us for 2012 backups
+   The StifleR Databases backup will only work on Windows Server 2016 or higher - contact us for Windows Server 2012 backups
 
    .USAGE
-   .\StifleR-Backup.ps1 -Mode Online/Offline
+   .\StifleR_Backup.ps1
 
 
    .NOTES
     AUTHOR: 2Pint Software
     EMAIL: support@2pintsoftware.com
-    VERSION: 1.0.0.0
-    DATE:22/05/2019 
+    VERSION: 1.0.0.6
+    DATE:12/22/2023
     
     CHANGE LOG: 
-    1.0.0.0 : 02/22/2018  : Initial version of script
+    1.0.0.0 : 02/22/2018 : Initial version of script  - not much error checking - USE AT OWN RISK
     1.0.0.1 : 10/1/2019  : Modified backup location to archive on data disk
-    1.0.0.2 : 8/5/2020  : Added Offline option, simplified path handling, added logging, and added logic to only keep backups for a week
+    1.0.0.2 : 11/25/2019 : Added logging and automatic logging
+    1.0.0.3 : 8/18/2023  : Added backup of SQL History database
+    1.0.0.4 : 11/3/2023  : Added Archiving and backup of maintenance solution
+    1.0.0.5 : 12/21/2023  : Added script/instructions for creating the scheduled task with a service account
+    1.0.0.6 : 12/22/2023  : Major rework, additional logging and error handling. Added support for Stifler 2.10
 
    .LINK
     https://2pintsoftware.com
 
+    Sample Code to schedule this script with a service account
+    $Cred = Get-Credential
+    $UserName = $Cred.UserName
+    $Password = $Cred.GetNetworkCredential().password
+    & schtasks /create /ru $UserName /rp $Password /sc DAILY /ST 02:00  /tn "2Pint Software\Stifler Backup" /TR "PowerShell.exe -ExecutionPolicy ByPass -File E:\2Pint_Maintenance\Scripts\StifleR_Backup.ps1"
+
 #>
 
-#Requires -RunAsAdministrator
-[CmdletBinding()]
-param(
-	[Parameter(HelpMessage = "Use this parameter to specify whether to run the backup in Online or Offline Mode.",Mandatory=$True)]
-    [ValidateSet("Online","Offline”)]
-	[string]$Mode
-)
+# Maintenance Solution Scripts Location
+$MaintenancePath = "E:\2Pint_Maintenance"
 
-# Modify locations to match your environment
-$DataPath = "C:\ProgramData\2Pint Software\StifleR\Server"
-$BackupPath = "E:\2Pint_Backup\StifleR_Backup"
-$StifleRInstallDir = "C:\Program Files\2Pint Software\StifleR"
+# HealthCheck Solution Scripts Location (Optional)
+$HealthCheckPath = "E:\2Pint_HealthCheck"
+
+# Log file
+$Date = Get-Date
+$ts = $Date.ToString("MMddyyyyHHmmss")
+$LogFile = "$MaintenancePath\Logs\StifleR_Backup_$($ts).log"
+If (!(Test-Path $MaintenancePath\Logs)){New-Item -ItemType Directory -Force -Path $MaintenancePath\Logs}
+
+# Backup Locations - please edit these to reflect the correct path to the installation/data folder
+$DataPath = "E:\StifleRDB"
+$MainBackupPath = "E:\2Pint_Backup\StifleR_Backup"
+$BackupPath = "$MainBackupPath\StifleRBackup.$ts.bak"
+$ConfigFile = "C:\Program Files\2Pint Software\StifleR\StifleR.Service.exe.config"
 $GenerateLocationScript = "C:\ProgramData\2Pint Software\StifleR\Server\GenerateLocation.ps1"
 
-$Date = $(get-date -f MMddyyyy)
-$LogFile = "E:\2Pint_Maintenance\StifleR_Backup$Date.log"
+# Backup Archive locations (local and remote)
+$2PintBackupArchive = "E:\2Pint_Backup_Archive"
+$RemoteDestination = "\\FS01\Backup\2Pint"
+
+# SQL History Database
+$BackupSQLHistory = $True # Not all customers are using SQL History
+$SQLHistoryInstance = "$env:COMPUTERNAME\SQLEXPRESS"
+$SQLHistoryDatabase = "StifleR" 
+
 
 Function Write-Log{
 	param (
@@ -56,135 +79,205 @@ Function Write-Log{
    )
 
    $TimeGenerated = $(Get-Date -UFormat "%D %T")
-   $Line = "$TimeGenerated $Message"
+   $Line = "$TimeGenerated : $Message"
    Add-Content -Value $Line -Path $LogFile -Encoding Ascii
 
 }
 
-# Start logging (remove todays log if exist)
-Write-Log -Message "Starting backup of StifleR Databases and Configuration" 
+#--------------------------------
+###Take a backup
+#--------------------------------
 
-# Validate critical locations
-If (!(Test-Path $DataPath)){
-    Write-Log -Message "$DataPath does exist not, aborting..."
-    Write-Warning -Message "$DataPath does not exist, aborting..."
+Write-Log "Backup started on $Date"
+
+# Check for supported StifleR Version
+Write-Log "Checking for supported StifleR Version"
+$StifleRVersion = [version](Get-CimInstance -namespace root\StifleR -ClassName StifleREngine).version
+If (($StifleRVersion.Major -eq 2 ) -and (($StifleRVersion.Minor -eq 6) -or ($StifleRVersion.Minor -eq 10))) {
+    Write-Log "Supported version detected: $StifleRVersion"
+}
+Else {
+    Write-Log "Unsupported version detected: $StifleRVersion. Aborting script..."
     Break
 }
-
-If (!(Test-Path $StifleRInstallDir)){
-    Write-Log -Message "$StifleRInstallDir does exist not, aborting..."
-    Write-Warning -Message "$StifleRInstallDir does not exist, aborting..."
-    Break
-}
-
-
-#-----------------------------------------------------------
-# Make a backup of the StifleR Data
-#-----------------------------------------------------------
-
-$ts = $(get-date -f MMddyyyy)+$(get-date -f HHmmss)
 
 # First, create the backup folders
-If (!(Test-Path "$BackupPath\StifleRBackup.$ts.bak\Databases")){New-Item -ItemType Directory -Path "$BackupPath\StifleRBackup.$ts.bak\Databases" -Force}
+Write-Log "Creating backup folders"
+If (!(Test-Path $BackupPath\Databases)){New-Item -ItemType Directory -Force -Path $BackupPath\Databases}
+If (!(Test-Path $BackupPath\StifleRSQLHistoryBackup)){New-Item -ItemType Directory -Force -Path $BackupPath\StifleRSQLHistoryBackup}
+If (!(Test-Path $BackupPath\Maintenance)){New-Item -ItemType Directory -Force -Path $BackupPath\Maintenance}
+If (!(Test-Path $BackupPath\2Pint_Maintenance)){New-Item -ItemType Directory -Force -Path $BackupPath\2Pint_Maintenance}
+If (!(Test-Path $2PintBackupArchive)){New-Item -ItemType Directory -Force -Path $2PintBackupArchive}
+If (!(Test-Path $BackupPath\HealthCheck)){New-Item -ItemType Directory -Force -Path $BackupPath\HealthCheck}
 
-If ($Mode -eq "Online"){
-
-    # Take an online backup of the ESE Databases
-    Write-Log -Message "Online Backup requested, running ESENTUTL.exe.."
-    If (Test-Path $DataPath\Databases\Clients\Clients.edb) {ESENTUTL.EXE /y $DataPath\Databases\Clients\Clients.edb /vssrec epc . /d $BackupPath\StifleRBackup.$ts.bak\Databases\Clients.edb}
-    If (Test-Path $DataPath\Databases\History\History.edb) {ESENTUTL.EXE /y $DataPath\Databases\History\History.edb /vssrec epc . /d $BackupPath\StifleRBackup.$ts.bak\Databases\History.edb}
-    If (Test-Path $DataPath\Databases\Jobs\Jobs.edb) {ESENTUTL.EXE /y $DataPath\Databases\Jobs\Jobs.edb /vssrec epc . /d $BackupPath\StifleRBackup.$ts.bak\Databases\Jobs.edb}
-    If (Test-Path $DataPath\Databases\Locations\locations.edb) {ESENTUTL.EXE /y $DataPath\Databases\Locations\locations.edb /vssrec epc . /d $BackupPath\StifleRBackup.$ts.bak\Databases\Locations.edb}
-    If (Test-Path $DataPath\Databases\SRUM\SRUM.edb) {ESENTUTL.EXE /y $DataPath\Databases\SRUM\SRUM.edb /vssrec epc . /d $BackupPath\StifleRBackup.$ts.bak\Databases\SRUM.edb}
-
+# Backup of the ESE Databases (the Location database in 2.10 is only used during migration, no need to backup)
+If (($StifleRVersion.Major -eq 2 ) -and ($StifleRVersion.Minor -eq 10)) {
+    # 2.10 Databases
+    $Databases = @(
+        "History"
+        "Main"
+        "NewLocations"
+    )
+}
+Else {
+    # Assuming 2.6 Databases
+    $Databases = @(
+        "Clients"
+        "History"
+        "Jobs"
+        "Locations"
+        "SRUM"
+    )
 }
 
-If ($Mode -eq "Offline"){
 
-    $ServiceName = "StifleRServer"
-    $StifleRProc = "stifler.service"
 
-    # Take an offline backup of the ESE Databases
-    Write-Log -Message "Offline Backup requested"
+foreach ($Database in $Databases) {
 
-    # Stop the Service
-    $s = Get-Service $ServiceName -ErrorAction SilentlyContinue
-    If ($s){
-        Write-Log -Message "Attempting to Stop the StifleR Server Service"
-        Stop-Service $s.name -Force -WarningAction SilentlyContinue
+    $SourcePath = "$DataPath\$Database\$Database.edb"
+    $DestinationPath = "$BackupPath\Databases\$Database"
+    If (Test-Path $SourcePath) {
+        Write-Log "$Database.edb found, file size is: $((Get-Item $SourcePath).length) bytes"
+        Write-Log "Backing up $Database database:"
+
+        # Request temporary files for RedirectStandardOutput and RedirectStandardError
+        $RedirectStandardOutput = [System.IO.Path]::GetTempFileName()
+        $RedirectStandardError = [System.IO.Path]::GetTempFileName()
+
+        $ESENTUTL = Start-Process ESENTUTL.EXE "/y $SourcePath /vssrec epc . /d $DestinationPath" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $RedirectStandardOutput -RedirectStandardError $RedirectStandardError
+
+        # Log the ESENTUTL Standard Output, skip the empty lines diskpart creates
+        If ((Get-Item $RedirectStandardOutput).length -gt 0){
+            Write-Log "----------- ESENTUTL: Begin Standard Output -----------"
+            $CleanedRedirectStandardOutput = Get-Content $RedirectStandardOutput | Where-Object {$_.trim() -ne "" } 
+            foreach ($row in $CleanedRedirectStandardOutput){
+                 Write-Log $row
+            }
+            Write-Log "----------- ESENTUTL: End Standard Output -----------"
+        }
+
+        # Log the ESENTUTL Standard Error, skip the empty lines diskpart creates
+        If ((Get-Item $RedirectStandardError).length -gt 0){
+            Write-Log "----------- ESENTUTL: Begin Standard Error -----------"
+            $CleanedRedirectStandardError = Get-Content $RedirectStandardError | Where-Object {$_.trim() -ne "" } 
+            foreach ($row in $CleanedRedirectStandardError){
+                 Write-Log $row
+            }
+            Write-Log "----------- ESENTUTL: End Standard Error -----------"
+        }
+
+        # ESENTUTL Error handling
+        if ($ESENTUTL.ExitCode -eq 0) {
+	        Write-Log "Backup of History.edb completed successfully"
+        } elseif ($ESENTUTL.ExitCode -gt 0 -or $ESENTUTL.ExitCode -lt 0) {
+	        return Write-Log "An error occurred. Exit code is $($ESENTUTL.ExitCode). Aborting Script..."
+            Break
+        } else {
+	        return Write-Log "An unknown error occurred. Aborting Script..."
+            Break
+        }
     }
-    Else{
-        Write-Log -Message "The StifleR Server service was not found, aborting..."
+    Else {
+        Write-Log "$Database.edb not found. Aborting script.."
+        Break
+
+    }
+}
+
+# Backup the StifleR Server configuration XML
+If (Test-Path $ConfigFile) {Copy-Item $ConfigFile $BackupPath -Force}
+
+# Backup the generate location script
+If (Test-Path $GenerateLocationScript ) {Copy-Item $GenerateLocationScript $BackupPath -Force}
+
+# Backup of HealthCheck Scripts (if exist)
+If (Test-Path $HealthCheckPath\Scripts){
+    Copy-Item "$HealthCheckPath\Scripts" $BackupPath\HealthCheck -Recurse -Force
+}
+
+# Backup 2Pint Maintenance Solutions
+Write-Log "Backup 2Pint HealthCheck Solutions"
+Copy-Item $MaintenancePath\* $BackupPath\2Pint_Maintenance -Recurse -Force
+
+# Backup of SQL History database
+# Note: SQL Express does not support compression on database backup
+If ($BackupSQLHistory -eq $True) {
+    Write-Log "BackupSQLHistory set to $BackupSQLHistory. Starting SQL History Backup"
+    $SQLBackupFile = "StifleR.bak"
+    $SQLBackupPath = "$BackupPath\StifleRSQLHistoryBackup"
+    $Result = Backup-SqlDatabase -ServerInstance $SQLHistoryInstance -Database $SQLHistoryDatabase -BackupFile $SQLBackupPath\$SQLBackupFile -PassThru
+    try {
+        Write-Log "Backing up database: $SQLHistoryDatabase"
+        Backup-SqlDatabase -ServerInstance $SQLHistoryInstance -Database $SQLHistoryDatabase -BackupFile $SQLBackupPath\$SQLBackupFile -ErrorAction Stop
+        Write-Log "SQL History Backup completed successfully."
+    } catch {
+        Write-Log "$("Backup of database: {0} failed. Reason: {1}" -f $SQLHistoryDatabase, $_.exception.message) Aborting script..."
         Break
     }
-
-    # If for some reason the service didn't stop correctly - force it.
-    $stiflerProcess = Get-Process $StifleRProc -ErrorAction SilentlyContinue
-    if ($stiflerProcess){
-        Write-Log -Message "StifleR Server process is still running - will attempt to stop it"
-        $stiflerProcess  | stop-process -Force
-    }
-
-    Write-Log -Message "Making an offline backup of the database files"
-
-    If (Test-Path $DataPath\Databases\Clients\Clients.edb) {Copy-Item -Path $DataPath\Databases\Clients -Destination $BackupPath\StifleRBackup.$ts.bak\Databases\Clients -Recurse}
-    If (Test-Path $DataPath\Databases\History\History.edb) {Copy-Item -Path $DataPath\Databases\History -Destination $BackupPath\StifleRBackup.$ts.bak\Databases\History -Recurse}
-    If (Test-Path $DataPath\Databases\Jobs\Jobs.edb) {Copy-Item -Path $DataPath\Databases\Jobs -Destination $BackupPath\StifleRBackup.$ts.bak\Databases\Jobs -Recurse}
-    If (Test-Path $DataPath\Databases\Locations\locations.edb) {Copy-Item -Path $DataPath\Databases\Locations -Destination $BackupPath\StifleRBackup.$ts.bak\Databases\Locations -Recurse}
-    If (Test-Path $DataPath\Databases\SRUM\SRUM.edb) {Copy-Item -Path $DataPath\Databases\SRUM -Destination $BackupPath\StifleRBackup.$ts.bak\Databases\SRUM -Recurse}
-
-    # Start the StifleR Server service again
-    $Status = (get-service -name $ServiceName).Status
-
-    If($Status -ne "Running"){
-        Write-Log -Message "Starting StifleR Server Service"
-        net start $ServiceName
-        Write-Log -Message "Sleeping 30 seconds" 
-        Start-sleep -s 30
-    }
-
-    # Just in case service didnt get started on first try
-    $Status = (get-service -name $ServiceName).Status
-
-    If($Status -ne "Running"){
-        Write-Log -Message "WARNING: Starting StifleR Server Service did not start in previous attempt, trying one more time" 
-        net start $ServiceName
-        Write-Log -Message "Sleeping 30 seconds" 
-        Start-sleep -s 30
-    }
-
-    # Checking the service status
-    If($Status -ne "Running"){
-        Write-Log -Message "WARNING: StifleR Server Service could not be started, continuing to backup remaining configuration files" 
-    }
+}
+Else {
+    Write-Log "BackupSQLHistory set to $BackupSQLHistory. Skipping SQL History Backup"
 }
 
-# Take a backup of the configuration XML
-Write-Log -Message "Take a backup of the configuration XML"
-If (Test-Path $StifleRInstallDir\StifleR.Service.exe.config) {copy-item $StifleRInstallDir\StifleR.Service.exe.config $BackupPath\StifleRBackup.$ts.bak -Force}
-
-# Take a backup of the License
-Write-Log -Message "Take a backup of the License"
-If (Test-Path $StifleRInstallDir\License.cab) {copy-item $StifleRInstallDir\License.cab $BackupPath\StifleRBackup.$ts.bak -Force}
-
-# Take a backup of the generate location script
-Write-Log -Message "Take a backup of the generate location script"
-If (Test-Path $GenerateLocationScript) {copy-item $GenerateLocationScript $BackupPath\StifleRBackup.$ts.bak -Force}
-
-# Remove backups older than seven days (always keep seven copies)
-$maxDaystoKeep = -7
-
-$itemsToDelete = dir $BackupPath -Recurse -Directory *.bak | Where LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
+# Remove backup folders older than three days
+Write-Log "Removing backup folders older than three days"
+$maxDaystoKeep = -3
+$itemsToDelete = Get-ChildItem $MainBackupPath -Directory *.bak | Where LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
 
 if ($itemsToDelete.Count -gt 0){
     ForEach ($item in $itemsToDelete){
-        Write-Log -Message "$($item.Name) is older than $((get-date).AddDays($maxDaystoKeep)) and will be deleted" 
+        Write-Log "$($item.Name) is older than $((get-date).AddDays($maxDaystoKeep)) and will be deleted" 
         Remove-Item $item.FullName -Recurse -Force
         
     }
 }
 else{
-    Write-Log -Message "No items to be deleted today $($(Get-Date).DateTime)"  
+    Write-Log "No items to be deleted today $($(Get-Date).DateTime)" 
     }
 
-Write-Log -Message "Cleanup of log files older than $((get-date).AddDays($maxDaystoKeep)) completed..."
+Write-Log "Cleanup of backups older than $((get-date).AddDays($maxDaystoKeep)) completed..."
+
+# Zip the StifleR Backups to the backup folder
+Write-Log "Archive the StifleR Backups in ZIP format to the backup archive folder: $2PintBackupArchive"
+$StifleRBackupName = "StifleR_Backup_$($ts).zip"
+$StifleRBackupArchiveFile = Join-Path -Path $2PintBackupArchive -ChildPath $StifleRBackupName
+If(Test-path $StifleRBackupArchiveFile) {Remove-item $StifleRBackupArchiveFile}
+Add-Type -assembly "system.io.compression.filesystem"
+[io.compression.zipfile]::CreateFromDirectory($BackupPath, $StifleRBackupArchiveFile)
+Write-Log "Archive completed. $StifleRBackupArchiveFile size is: $((Get-Item $StifleRBackupArchiveFile).length) bytes"
+
+# Copy the Stifler Backup Archive to remote file server 
+Write-Log "Copy the Stifler Backup Archive to remote file server: $RemoteDestination"
+If (Test-Path $RemoteDestination -PathType Container){
+    Write-Log "$RemoteDestination is a valid folder"
+    Write-Log "Copying $StifleRBackupArchiveFile to $RemoteDestination"
+    
+    Try {
+        Copy-Item -Path $StifleRBackupArchiveFile -Destination $RemoteDestination -Force -ErrorAction Stop
+    }
+    Catch {
+        Write-Log "An Error Occured on copying file: $($_.Exception.Message) Aborting Script..."
+        break
+    }
+}
+Else {
+    Write-Log "$RemoteDestination is not valid. Aborting script..."
+    Break
+}
+
+# Remove zip archives older than 7 days
+$maxDaystoKeep = -7
+$itemsToDelete = Get-ChildItem $2PintBackupArchive -Filter "*.zip" | Where LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
+
+if ($itemsToDelete.Count -gt 0){
+    ForEach ($item in $itemsToDelete){
+        Write-Log "$($item.Name) is older than $((get-date).AddDays($maxDaystoKeep)) and will be deleted" 
+        Remove-Item $item.FullName -Recurse -Force
+        
+    }
+}
+else{
+    Write-Log "No items to be deleted today $($(Get-Date).DateTime)"
+    }
+
+Write-Output "Cleanup of log files older than $((get-date).AddDays($maxDaystoKeep)) completed..."
