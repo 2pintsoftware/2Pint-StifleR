@@ -29,13 +29,13 @@ Param (
 #Will serach for Critical, Error and Warnings
 $loglevel = 1,2,3
 
-if(!Test-Path -path $path -PathType Container)
+if(!(Test-Path -path $path -PathType Container))
 {
     write-error "No such directory found"
     break
 }
 else{
-    $logfiles = Get-ChildItem -Path -Filter "*.evtx"
+    $logfiles = Get-ChildItem -Path $path -Filter "*.evtx"
     if($logfiles -eq 0)
     {
         Write-error "No eventlogs found in $path"
