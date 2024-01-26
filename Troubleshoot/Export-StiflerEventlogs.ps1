@@ -19,7 +19,7 @@
 #Requires -RunAsAdministrator
 #region --------------------------------------------------[Script Parameters]------------------------------------------------------
 Param (
-    [string]$outpath = "C:\Windows\Temp"
+  [string]$outpath = "C:\Windows\Temp"
 )
 
 #endregion
@@ -40,42 +40,67 @@ $temppath = (new-item "$outpath\$tempGuid" -ItemType Directory -Force).FullName
 
 #Stifler Logs Files to be exported if they exists.
 $logfiles = @(
-"TwoPintSoftware-StifleR.ClientApp-BITSBranchCache/Operational",
-"TwoPintSoftware-StifleR.ClientApp-Bandwidth/Analytic",
-"TwoPintSoftware-StifleR.ClientApp-Bandwidth/Debug",
-"TwoPintSoftware-StifleR.ClientApp-Bandwidth/Operational",
-"TwoPintSoftware-StifleR.ClientApp-DeliveryOptimization/Debug",
-"TwoPintSoftware-StifleR.ClientApp-DeliveryOptimization/Operational",
-"TwoPintSoftware-StifleR.ClientApp-Jobs/Debug",
-"TwoPintSoftware-StifleR.ClientApp-Jobs/Operational",
-"TwoPintSoftware-StifleR.ClientApp-Leader/Debug",
-"TwoPintSoftware-StifleR.ClientApp-Leader/Operational",
-"TwoPintSoftware-StifleR.ClientApp-Location/Analytic",
-"TwoPintSoftware-StifleR.ClientApp-Location/Debug",
-"TwoPintSoftware-StifleR.ClientApp-Location/Operational",
-"TwoPintSoftware-StifleR.ClientApp-MainLoop/Debug",
-"TwoPintSoftware-StifleR.ClientApp-MainLoop/Operational",
-"TwoPintSoftware-StifleR.ClientApp-Program/Debug",
-"TwoPintSoftware-StifleR.ClientApp-Program/Operational",
-"TwoPintSoftware-StifleR.ClientApp-SignalR/Debug",
-"TwoPintSoftware-StifleR.ClientApp-SignalR/Operational",
-"TwoPintSoftware-StifleR.ClientApp-SignalRMessages/Operational",
-"TwoPintSoftware-StifleR.ClientApp-TSHelper/Operational",
-"TwoPintSoftware-StifleR.ClientApp-TriggersAndEvents/Debug",
-"TwoPintSoftware-StifleR.ClientApp-TriggersAndEvents/Operational",
-"TwoPintSoftware-StifleR.ClientApp-TypeDetection/Debug",
-"TwoPintSoftware-StifleR.ClientApp-TypeDetection/Operational"
+  "TwoPintSoftware-StifleR.Service-BandwidthWatchdog/Debug",
+  "TwoPintSoftware-StifleR.Service-DataEngine/Analytic",
+  "TwoPintSoftware-StifleR.Service-DataEngine/Debug",
+  "TwoPintSoftware-StifleR.Service-LocationService/Debug",
+  "TwoPintSoftware-StifleR.Service-Leaders/Analytic",
+  "TwoPintSoftware-StifleR.Service-Leaders/Debug",
+  "TwoPintSoftware-StifleR.Service-LocationService/Admin",
+  "TwoPintSoftware-StifleR.Service-Security/Admin",
+  "TwoPintSoftware-StifleR.Service-Security/Debug",
+  "TwoPintSoftware-StifleR.Service-SignalR/Debug",
+  "TwoPintSoftware-StifleR.Service-StifleREngine/Debug",
+  "TwoPintSoftware-StifleR.Service-WebApi/Admin",
+  "TwoPintSoftware-StifleR.Service-WebApi/Debug",
+  "TwoPintSoftware-StifleR.Service-WinService/Debug"
+  "TwoPintSoftware-StifleR.ClientApp-Bandwidth/Analytic",
+  "TwoPintSoftware-StifleR.ClientApp-Bandwidth/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-DeliveryOptimization/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Jobs/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Leader/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Location/Analytic",
+  "TwoPintSoftware-StifleR.ClientApp-Location/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-MainLoop/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Program/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-SignalR/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-TriggersAndEvents/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-TypeDetection/Debug"
+  "TwoPintSoftware-StifleR.ClientApp-BITSBranchCache/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-Bandwidth/Analytic",
+  "TwoPintSoftware-StifleR.ClientApp-Bandwidth/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Bandwidth/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-DeliveryOptimization/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-DeliveryOptimization/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-Jobs/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Jobs/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-Leader/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Leader/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-Location/Analytic",
+  "TwoPintSoftware-StifleR.ClientApp-Location/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Location/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-MainLoop/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-MainLoop/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-Program/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-Program/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-SignalR/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-SignalR/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-SignalRMessages/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-TSHelper/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-TriggersAndEvents/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-TriggersAndEvents/Operational",
+  "TwoPintSoftware-StifleR.ClientApp-TypeDetection/Debug",
+  "TwoPintSoftware-StifleR.ClientApp-TypeDetection/Operational"
 )
 
 
 # Export logs
-foreach($logfile in $logfiles)
-{
-    $outname = ($logfile -split "-",2)[1] -replace "/","_"
-    try{
+foreach ($logfile in $logfiles) {
+  $outname = ($logfile -split "-", 2)[1] -replace "/", "_"
+  try {
     . wevtutil epl $logfile "$temppath\$outname.evtx" 2>&1 | Out-Null
-    }
-    catch {}
+  }
+  catch {}
 }
 
 $filepath = "$outpath\StiflerLogs_$(get-date -f yyyyMMddHHmm).zip"
