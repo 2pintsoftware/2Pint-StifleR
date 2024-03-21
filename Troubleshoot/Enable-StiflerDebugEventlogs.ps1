@@ -3,22 +3,26 @@
   Enable-StiflerDebugEventlogs.ps1
 
 .DESCRIPTION
-  Script analyzes any Stifler event logs in the specified path and displays them in a GridView.
-  Computer running this script MUST have the stifler client installed to be able to read the logfiles.
+  Script can enable or disable Stifler Eventlogs, it can also be used to set the size of evenlogs or reset them back to the default value
 
 .PARAMETER enableDebugLogs
-  Path to folder containing Stifler .evtx logs exported from a computer with the Stifler client.
+  Switch to enable debug logs
 
 .PARAMETER disableDebugLogs
+  Switch to disable debug logs
+
+.PARAMETER EventLogs
+  Select one or more eventlogs to manipulate, depending if the script is running on a client or server the valid options may differ. Also SetLogMAXSize or ResetLogMAXSize can be used on all eventlogs, not just debug ones.
+  If nothing is specified it defaults to "All"
 
 .PARAMETER clearEventLogs
-  Clear all Stifler eventlogs
+  Clear Stifler eventlogs
 
 .PARAMETER SetLogMAXSize
-  Sets the Max size for all Stifler logs to specified value
+  Sets the Max size for Stifler logs to specified value
 
 .PARAMETER ResetLogMAXSize
-  Resets all Stifler logs to their defaul value.
+  Resets Stifler logs to their defaul value.
 
 .NOTES
   Version:        1.1
@@ -32,11 +36,10 @@
 #>
 #Requires -RunAsAdministrator
 Param (
-    [string]$outpath = "C:\Windows\Temp",
     [Switch]$clearEventLogs,
     [Switch]$enableDebugLogs,
     [Switch]$disableDebugLogs,
-    [Parameter(HelpMessage = "Enter one or more eventlogs to manipulate, depending if the script is running on a client or server the valid options may differ. Also SetLogMAXSize or ResetLogMAXSize can be used on all eventlogs, not just debug ones.")]
+    [Parameter(HelpMessage = "Select one or more eventlogs to manipulate, depending if the script is running on a client or server the valid options may differ. Also SetLogMAXSize or ResetLogMAXSize can be used on all eventlogs, not just debug ones.")]
     [ValidateSet("All", "BITSBranchCache", "Bandwidth", "DeliveryOptimization", "Jobs", "Leader", "Location", "MainLoop", "Program", "SignalR", "TriggersAndEvents", "TypeDetection", "BandwidthWatchdog", "DataEngine", "LocationService", "Leaders", "LocationService", "Security", "SignalR", "StifleREngine", "WebApi", "WinService")]
     [string[]]$EventLogs = "All",
     [Int]$SetLogMAXSize,
