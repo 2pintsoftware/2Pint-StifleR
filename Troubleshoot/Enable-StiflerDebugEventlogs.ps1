@@ -21,10 +21,13 @@
   Resets all Stifler logs to their defaul value.
 
 .NOTES
-  Version:        1.0
+  Version:        1.1
   Author:         support@2pintsoftware.com
   Creation Date:  2023-10-20
   Purpose/Change: Initial script development
+  
+  CHANGE LOG: 
+  1.1             2024/03/21 Added option to enable/disble individualy logs. Fixed so that the SetLogMAXSize works on already enabled debug logs.
 
 #>
 #Requires -RunAsAdministrator
@@ -33,6 +36,9 @@ Param (
     [Switch]$clearEventLogs,
     [Switch]$enableDebugLogs,
     [Switch]$disableDebugLogs,
+    [Parameter(HelpMessage = "Enter one or more eventlogs to manipulate, depending if the script is running on a client or server the valid options may differ. Also SetLogMAXSize or ResetLogMAXSize can be used on all eventlogs, not just debug ones.")]
+    [ValidateSet("All", "BITSBranchCache", "Bandwidth", "DeliveryOptimization", "Jobs", "Leader", "Location", "MainLoop", "Program", "SignalR", "TriggersAndEvents", "TypeDetection", "BandwidthWatchdog", "DataEngine", "LocationService", "Leaders", "LocationService", "Security", "SignalR", "StifleREngine", "WebApi", "WinService")]
+    [string[]]$EventLogs = "All",
     [Int]$SetLogMAXSize,
     [Switch]$ResetLogMAXSize
 )
@@ -40,7 +46,7 @@ Param (
 $IsStiflerServer = $false
 $IsStiflerClient = $false
 
-if(Get-service -name StifleRServer -ErrorAction SilentlyContinue) {
+if (Get-service -name StifleRServer -ErrorAction SilentlyContinue) {
     $IsStiflerServer = $true
 }
 
@@ -48,7 +54,7 @@ if (Get-Service -Name StifleRClient -ErrorAction SilentlyContinue) {
     $IsStiflerClient = $true
 }
 
-If(!$IsStiflerServer -and !$IsStiflerClient) {
+If (!$IsStiflerServer -and !$IsStiflerClient) {
     Write-error "No Stifler installed in this machine"
     break
 }
@@ -60,6 +66,11 @@ if ($enableDebugLogs -and $disableDebugLogs) {
 
 if ($SetLogMAXSize -and $ResetLogMAXSize) {
     Write-Warning "You can't both change and reset the eventlogs size!! Make up your mind please!"
+    break
+}
+
+if ($EventLogs -contains "All" -and $EventLogs.Count -gt 1) {
+    Write-Warning "You can't select All debug logs and at the same time specify specific ones!! Make up your mind please!"
     break
 }
 
@@ -125,12 +136,28 @@ $clientstandardlogfiles = @(
 )
 
 if ($IsStiflerServer) {
-    $debuglogfiles += $serverdebuglogfiles
-    $standardlogfiles += $serverstandardlogfiles 
+    if ($EventLogs -contains "All" ) {
+        $debuglogfiles += $serverdebuglogfiles
+        $standardlogfiles += $serverstandardlogfiles 
+    }
+    else {
+        foreach ($log in $EventLogs) {
+            $debuglogfiles += $serverdebuglogfiles -match "-$log/"
+            $standardlogfiles += $serverstandardlogfiles -match "-$log/"
+        }
+    }
 }
 if ($IsStiflerClient) {
-    $debuglogfiles += $clientdebuglogfiles
-    $standardlogfiles += $clientstandardlogfiles
+    if ($EventLogs -contains "All" ) {
+        $debuglogfiles += $clientdebuglogfiles
+        $standardlogfiles += $clientstandardlogfiles
+    }
+    else {
+        foreach ($log in $EventLogs) {
+            $debuglogfiles += $clientdebuglogfiles -match "-$log/"
+            $standardlogfiles += $clientstandardlogfiles -match "-$log/"
+        }
+    }
 }
  
 $logfiles = $debuglogfiles + $standardlogfiles
@@ -146,26 +173,31 @@ function Set-EventLogSize($eventLogNames, $SetLogMAXSize) {
             $eventLog = New-Object Diagnostics.Eventing.Reader.EventLogConfiguration ($eventLogName, $session)
         }
         catch {
-            Write-host "warning:unable to open eventlog $($eventLogName) $($error)"
+            Write-warning "warning:unable to open eventlog $($eventLogName) $($error)"
             $error.clear()
         }
 
-        $eventLog.LogName
-        $eventLog.MaximumSizeInBytes = $SetLogMAXSize
-        $eventLog.SaveChanges()
+        if($eventLog.IsEnabled -eq $true -and ($eventLog.LogType -ieq "Analytic" -or $eventLog.LogType -ieq "Debug"))
+        {
+            $eventLog.LogName
+            $eventLog.IsEnabled = $false
+            $eventLog.SaveChanges()
+            $eventLog.MaximumSizeInBytes = $SetLogMAXSize
+            $eventLog.SaveChanges()
+            $eventLog.IsEnabled = $true
+            $eventLog.SaveChanges()
+    
+        }
+        else {
+            $eventLog.LogName
+            $eventLog.MaximumSizeInBytes = $SetLogMAXSize
+            $eventLog.SaveChanges()
+        }
 
         $eventLog.Dispose()
         $session.Dispose()
 
     }
-}
-
-if ($SetLogMAXSize) {
-    Set-EventLogSize -eventLogNames $logfiles -SetLogMAXSize $SetLogMAXSize
-}
-
-if ($ResetLogMAXSize) {
-    Set-EventLogSize -eventLogNames $logfiles -SetLogMAXSize 1052672 # 1028Kb
 }
 
 function enable-logs($eventLogNames) {
@@ -236,11 +268,11 @@ function enable-logs($eventLogNames) {
                     $debugLogsEnabled.Add($eventLog.LogName) | Out-Null
 
                     if ($debugLogsMax -le $debugLogsEnabled.Count) {
-                        Write-host "Error: too many debug logs enabled ($($debugLogsMax))."
-                        Write-host "Error: this can cause system performance / stability issues as well as inability to boot!"
-                        Write-host "Error: rerun script again with these switches: .\event-log-manager.ps1 -listeventlogs -disableDebugLogs"
-                        Write-host "Error: this will disable all debug logs."
-                        Write-host "Warning: exiting script."
+                        Write-Error "Error: too many debug logs enabled ($($debugLogsMax))."
+                        Write-Error "Error: this can cause system performance / stability issues as well as inability to boot!"
+                        Write-Error "Error: rerun script again with these switches: .\event-log-manager.ps1 -listeventlogs -disableDebugLogs"
+                        Write-Error "Error: this will disable all debug logs."
+                        Write-Error "Warning: exiting script."
                         exit 1
                     }
                 }
@@ -269,6 +301,14 @@ function enable-logs($eventLogNames) {
         Write-host "enable logs exception: $($error | out-string)"
         $error.Clear()
     }
+}
+
+if ($SetLogMAXSize) {
+    Set-EventLogSize -eventLogNames $logfiles -SetLogMAXSize $SetLogMAXSize
+}
+
+if ($ResetLogMAXSize) {
+    Set-EventLogSize -eventLogNames $logfiles -SetLogMAXSize 1052672 # 1028Kb
 }
 
 if ($enableDebugLogs -or $disableDebugLogs) {
