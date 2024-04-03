@@ -52,8 +52,8 @@ $MaintenancePath = "E:\2Pint_Maintenance"
 $HealthCheckPath = "E:\2Pint_HealthCheck"
 
 # Log file
-$Date = Get-Date
-$ts = $Date.ToString("MMddyyyyHHmmss")
+$LogDate = Get-Date
+$ts = $LogDate.ToString("MMddyyyyHHmmss")
 $LogFile = "$MaintenancePath\Logs\StifleR_Backup_$($ts).log"
 If (!(Test-Path $MaintenancePath\Logs)){New-Item -ItemType Directory -Force -Path $MaintenancePath\Logs}
 
@@ -67,6 +67,9 @@ $ConfigFile = "$StiflerPath\StifleR.Service.exe.config"
 $OverrideConfigFile = "$StiflerPath\appSettings-override.xml"
 [array]$CustomScripts = Get-ChildItem "C:\ProgramData\2Pint Software\StifleR" -Filter *.ps1 -Recurse # Change this if not using default locations
 
+# How long to keep local backups (folder and zip archives)
+$maxDaystoKeep = 7
+
 # Backup Archive locations (local and remote)
 $2PintBackupArchive = "E:\2Pint_Backup_Archive"
 $RemoteDestination = "\\FS01\Backup\2Pint"
@@ -77,23 +80,36 @@ $SQLHistoryInstance = "$env:COMPUTERNAME\SQLEXPRESS"
 $SQLHistoryDatabase = "StifleR" 
 
 
-Function Write-Log{
-	param (
-    [Parameter(Mandatory = $true)]
-    [string]$Message
-   )
-
-   $TimeGenerated = $(Get-Date -UFormat "%D %T")
-   $Line = "$TimeGenerated : $Message"
-   Add-Content -Value $Line -Path $LogFile -Encoding Ascii
-
+function Write-Log {
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory=$false)]
+        $Message,
+        [Parameter(Mandatory=$false)]
+        $ErrorMessage,
+        [Parameter(Mandatory=$false)]
+        $Component = "Script",
+        [Parameter(Mandatory=$false)]
+        [int]$Type
+    )
+    <#
+    Type: 1 = Normal, 2 = Warning (yellow), 3 = Error (red)
+    #>
+   $Time = Get-Date -Format "HH:mm:ss.ffffff"
+   $Date = Get-Date -Format "MM-dd-yyyy"
+   if ($ErrorMessage -ne $null) {$Type = 3}
+   if ($Component -eq $null) {$Component = " "}
+   if ($Type -eq $null) {$Type = 1}
+   $LogMessage = "<![LOG[$Message $ErrorMessage" + "]LOG]!><time=`"$Time`" date=`"$Date`" component=`"$Component`" context=`"`" type=`"$Type`" thread=`"`" file=`"`">"
+   $LogMessage.Replace("`0","") | Out-File -Append -Encoding UTF8 -FilePath $LogFile
 }
 
 #--------------------------------
 ###Take a backup
 #--------------------------------
 
-Write-Log "Backup started on $Date"
+$BackupDate = Get-Date -Format "MM-dd-yyyy HH:mm:ss"
+Write-Log "Backup started on $BackupDate"
 
 # Check for supported StifleR Version
 Write-Log "Checking for supported StifleR Version"
@@ -238,24 +254,6 @@ Else {
     Write-Log "BackupSQLHistory set to $BackupSQLHistory. Skipping SQL History Backup"
 }
 
-# Remove backup folders older than three days
-Write-Log "Removing backup folders older than three days"
-$maxDaystoKeep = -3
-$itemsToDelete = Get-ChildItem $MainBackupPath -Directory *.bak | Where-Object LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
-
-if ($itemsToDelete.Count -gt 0){
-    ForEach ($item in $itemsToDelete){
-        Write-Log "$($item.Name) is older than $((get-date).AddDays($maxDaystoKeep)) and will be deleted" 
-        Remove-Item $item.FullName -Recurse -Force
-        
-    }
-}
-else{
-    Write-Log "No items to be deleted today $($(Get-Date).DateTime)" 
-    }
-
-Write-Log "Cleanup of backups older than $((get-date).AddDays($maxDaystoKeep)) completed..."
-
 # Zip the StifleR Backups to the backup folder
 Write-Log "Archive the StifleR Backups in ZIP format to the backup archive folder: $2PintBackupArchive"
 $StifleRBackupName = "StifleR_Backup_$($ts).zip"
@@ -284,9 +282,27 @@ Else {
     Break
 }
 
-# Remove zip archives older than 7 days
-$maxDaystoKeep = -7
-$itemsToDelete = Get-ChildItem $2PintBackupArchive -Filter "*.zip" | Where-Object LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
+# Remove local backup folders older than maxDaystoKeep
+Write-Log "Removing local backup folders older than $maxDaystoKeep days"
+$itemsToDelete = Get-ChildItem $MainBackupPath -Directory *.bak | Where-Object LastWriteTime -lt ((get-date).AddDays(-$maxDaystoKeep))
+
+if ($itemsToDelete.Count -gt 0){
+    ForEach ($item in $itemsToDelete){
+        Write-Log "$($item.Name) is older than $((get-date).AddDays($maxDaystoKeep)) and will be deleted" 
+        Remove-Item $item.FullName -Recurse -Force
+        
+    }
+}
+else{
+    Write-Log "No items to be deleted today $($(Get-Date).DateTime)" 
+    }
+
+Write-Log "Cleanup of backup folders older than $((get-date).AddDays($maxDaystoKeep)) completed..."
+
+
+# Remove local backup archives older than 7 days
+Write-Log "Removing local backup archives older than $maxDaystoKeep days"
+$itemsToDelete = Get-ChildItem $2PintBackupArchive -Filter "*.zip" | Where-Object LastWriteTime -lt ((get-date).AddDays(-$maxDaystoKeep))
 
 if ($itemsToDelete.Count -gt 0){
     ForEach ($item in $itemsToDelete){
@@ -297,6 +313,10 @@ if ($itemsToDelete.Count -gt 0){
 }
 else{
     Write-Log "No items to be deleted today $($(Get-Date).DateTime)"
-    }
+}
+Write-Log "Cleanup of backup folders older than $((get-date).AddDays($maxDaystoKeep)) completed..."
+$BackupDate = Get-Date -Format "MM-dd-yyyy HH:mm:ss"
+Write-Log "Backup completed on $BackupDate"
 
-Write-Output "Cleanup of log files older than $((get-date).AddDays($maxDaystoKeep)) completed..."
+Write-Host "Backup completed!" -ForegroundColor Green
+Write-Host "Review the backup log file: $LogFile" 
