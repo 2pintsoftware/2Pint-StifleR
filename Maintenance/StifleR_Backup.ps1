@@ -8,6 +8,7 @@
    Backs up the .config XML configuration file
    Backs up the SQL History database
 
+   NOTE: After restoring an EDB file from online backup, it must repaired, sample syntax: ESENTUTL.EXE /p database.edb /o
 
    .REQUIREMENTS
    Must be run as Admin
@@ -25,12 +26,13 @@
     
     CHANGE LOG: 
     1.0.0.0 : 02/22/2018 : Initial version of script  - not much error checking - USE AT OWN RISK
-    1.0.0.1 : 10/1/2019  : Modified backup location to archive on data disk
+    1.0.0.1 : 10/01/2019 : Modified backup location to archive on data disk
     1.0.0.2 : 11/25/2019 : Added logging and automatic logging
-    1.0.0.3 : 8/18/2023  : Added backup of SQL History database
-    1.0.0.4 : 11/3/2023  : Added Archiving and backup of maintenance solution
-    1.0.0.5 : 12/21/2023  : Added script/instructions for creating the scheduled task with a service account
-    1.0.0.6 : 12/22/2023  : Major rework, additional logging and error handling. Added support for Stifler 2.10
+    1.0.0.3 : 08/18/2023 : Added backup of SQL History database
+    1.0.0.4 : 11/03/2023 : Added Archiving and backup of maintenance solution
+    1.0.0.5 : 12/21/2023 : Added script/instructions for creating the scheduled task with a service account
+    1.0.0.6 : 12/22/2023 : Major rework, additional logging and error handling. Added support for Stifler 2.10
+    1.0.0.7 : 04/03/2023 : Minor naming and logic improvements, added custom scripts backup, and additional config file backup
 
    .LINK
     https://2pintsoftware.com
@@ -59,8 +61,11 @@ If (!(Test-Path $MaintenancePath\Logs)){New-Item -ItemType Directory -Force -Pat
 $DataPath = "E:\StifleRDB"
 $MainBackupPath = "E:\2Pint_Backup\StifleR_Backup"
 $BackupPath = "$MainBackupPath\StifleRBackup.$ts.bak"
-$ConfigFile = "C:\Program Files\2Pint Software\StifleR\StifleR.Service.exe.config"
-$GenerateLocationScript = "C:\ProgramData\2Pint Software\StifleR\Server\GenerateLocation.ps1"
+$serviceName = "StifleRServer"
+$StiflerPath = (Split-Path -Parent (Get-CimInstance -ClassName win32_service | Where-object {$_.Name -eq $serviceName}).PathName).Substring(1)
+$ConfigFile = "$StiflerPath\StifleR.Service.exe.config"
+$OverrideConfigFile = "$StiflerPath\appSettings-override.xml"
+[array]$CustomScripts = Get-ChildItem "C:\ProgramData\2Pint Software\StifleR" -Filter *.ps1 -Recurse # Change this if not using default locations
 
 # Backup Archive locations (local and remote)
 $2PintBackupArchive = "E:\2Pint_Backup_Archive"
@@ -105,7 +110,6 @@ Else {
 Write-Log "Creating backup folders"
 If (!(Test-Path $BackupPath\Databases)){New-Item -ItemType Directory -Force -Path $BackupPath\Databases}
 If (!(Test-Path $BackupPath\StifleRSQLHistoryBackup)){New-Item -ItemType Directory -Force -Path $BackupPath\StifleRSQLHistoryBackup}
-If (!(Test-Path $BackupPath\Maintenance)){New-Item -ItemType Directory -Force -Path $BackupPath\Maintenance}
 If (!(Test-Path $BackupPath\2Pint_Maintenance)){New-Item -ItemType Directory -Force -Path $BackupPath\2Pint_Maintenance}
 If (!(Test-Path $2PintBackupArchive)){New-Item -ItemType Directory -Force -Path $2PintBackupArchive}
 If (!(Test-Path $BackupPath\HealthCheck)){New-Item -ItemType Directory -Force -Path $BackupPath\HealthCheck}
@@ -116,6 +120,7 @@ If (($StifleRVersion.Major -eq 2 ) -and ($StifleRVersion.Minor -eq 10)) {
     $Databases = @(
         "History"
         "Main"
+        "Locations"
         "NewLocations"
     )
 }
@@ -136,7 +141,12 @@ foreach ($Database in $Databases) {
 
     $SourcePath = "$DataPath\$Database\$Database.edb"
     $DestinationPath = "$BackupPath\Databases\$Database"
+    $DestinationDatabaseName = "$DestinationPath\$Database.edb"
     If (Test-Path $SourcePath) {
+        
+        # Create folder
+        If (!(Test-path $DestinationPath)){ New-Item -Path $DestinationPath -ItemType Directory -Force}
+        
         Write-Log "$Database.edb found, file size is: $((Get-Item $SourcePath).length) bytes"
         Write-Log "Backing up $Database database:"
 
@@ -144,7 +154,7 @@ foreach ($Database in $Databases) {
         $RedirectStandardOutput = [System.IO.Path]::GetTempFileName()
         $RedirectStandardError = [System.IO.Path]::GetTempFileName()
 
-        $ESENTUTL = Start-Process ESENTUTL.EXE "/y $SourcePath /vssrec epc . /d $DestinationPath" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $RedirectStandardOutput -RedirectStandardError $RedirectStandardError
+        $ESENTUTL = Start-Process ESENTUTL.EXE "/y $SourcePath /vssrec epc . /d $DestinationDatabaseName" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $RedirectStandardOutput -RedirectStandardError $RedirectStandardError
 
         # Log the ESENTUTL Standard Output, skip the empty lines diskpart creates
         If ((Get-Item $RedirectStandardOutput).length -gt 0){
@@ -170,25 +180,34 @@ foreach ($Database in $Databases) {
         if ($ESENTUTL.ExitCode -eq 0) {
 	        Write-Log "Backup of History.edb completed successfully"
         } elseif ($ESENTUTL.ExitCode -gt 0 -or $ESENTUTL.ExitCode -lt 0) {
-	        return Write-Log "An error occurred. Exit code is $($ESENTUTL.ExitCode). Aborting Script..."
-            Break
+	        Write-Log "An error occurred. Exit code is $($ESENTUTL.ExitCode). Aborting Script..."
+            #Break
         } else {
-	        return Write-Log "An unknown error occurred. Aborting Script..."
-            Break
+	        Write-Log "An unknown error occurred. Aborting Script..."
+            #Break
         }
     }
     Else {
-        Write-Log "$Database.edb not found. Aborting script.."
-        Break
-
+        Write-Log "$Database.edb not found, continue to the next.."
     }
 }
 
-# Backup the StifleR Server configuration XML
-If (Test-Path $ConfigFile) {Copy-Item $ConfigFile $BackupPath -Force}
+# Create Config folder
+New-Item -Path "$BackupPath\Config" -ItemType Directory -Force
 
-# Backup the generate location script
-If (Test-Path $GenerateLocationScript ) {Copy-Item $GenerateLocationScript $BackupPath -Force}
+# Backup the StifleR Server configuration XML
+If (Test-Path $ConfigFile) {Copy-Item $ConfigFile "$BackupPath\Config" -Force}
+
+# Backup the StifleR Server configuration XML
+If (Test-Path $OverrideConfigFile) {Copy-Item $OverrideConfigFile "$BackupPath\Config" -Force}
+
+# Backup custom scripts 
+If ($CustomScripts){
+    New-Item -Path "$BackupPath\Scripts" -ItemType Directory -Force
+    foreach ($Script in $CustomScripts){
+        Copy-Item $Script.FullName "$BackupPath\Scripts" -Force
+    }
+}
 
 # Backup of HealthCheck Scripts (if exist)
 If (Test-Path $HealthCheckPath\Scripts){
