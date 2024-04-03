@@ -154,7 +154,7 @@ foreach ($Database in $Databases) {
         $RedirectStandardOutput = [System.IO.Path]::GetTempFileName()
         $RedirectStandardError = [System.IO.Path]::GetTempFileName()
 
-        $ESENTUTL = Start-Process ESENTUTL.EXE "/y $SourcePath /vssrec epc . /d $DestinationDatabaseName" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $RedirectStandardOutput -RedirectStandardError $RedirectStandardError
+        $ESENTUTL = Start-Process ESENTUTL.EXE "/y ""$($SourcePath)"" /vssrec epc . /d ""$($DestinationDatabaseName)""" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $RedirectStandardOutput -RedirectStandardError $RedirectStandardError
 
         # Log the ESENTUTL Standard Output, skip the empty lines diskpart creates
         If ((Get-Item $RedirectStandardOutput).length -gt 0){
@@ -241,7 +241,7 @@ Else {
 # Remove backup folders older than three days
 Write-Log "Removing backup folders older than three days"
 $maxDaystoKeep = -3
-$itemsToDelete = Get-ChildItem $MainBackupPath -Directory *.bak | Where LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
+$itemsToDelete = Get-ChildItem $MainBackupPath -Directory *.bak | Where-Object LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
 
 if ($itemsToDelete.Count -gt 0){
     ForEach ($item in $itemsToDelete){
@@ -286,7 +286,7 @@ Else {
 
 # Remove zip archives older than 7 days
 $maxDaystoKeep = -7
-$itemsToDelete = Get-ChildItem $2PintBackupArchive -Filter "*.zip" | Where LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
+$itemsToDelete = Get-ChildItem $2PintBackupArchive -Filter "*.zip" | Where-Object LastWriteTime -lt ((get-date).AddDays($maxDaystoKeep))
 
 if ($itemsToDelete.Count -gt 0){
     ForEach ($item in $itemsToDelete){
