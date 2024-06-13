@@ -5,6 +5,7 @@
 # 1.0.0.5 - Changed to create daily logs rather than one large log
 # 1.0.0.6 - Updated logging function, and Added logic to delete logs older than 180 days
 # 1.0.0.7 - Updated logic to create logs folder and to toggle performance counters
+# 1.0.0.8 - Added function for daily service restart
 
 $Date = $(get-date -f MMddyyyy)
 
@@ -14,6 +15,8 @@ $LogFile = "$LogPath\HighCPUMemServiceRestarts-$Date.log"
 $CleanupLog = "$LogPath\ResourceManagerCleanup.log"
 $DaystoKeepLogFiles = 180
 $IncludePerformanceCounters = $False
+$EnableDailyServiceRestart = $True
+$DailyServiceRestartTime = 5 # 5 AM (use value 0-23)
 
 function Write-Log {
     [CmdletBinding()]
@@ -42,7 +45,49 @@ function Write-Log {
 # Create folders if needed
 If (!(Test-path $LogPath)){ New-Item -Path $LogPath -ItemType Directory -Force }
 
-Write-Log "INIT: Resource Manager Script started"
+Write-Log "================= INIT: Resource Manager Script started ================="
+
+# Stop Service if daily service restart has been enabled
+If ($EnableDailyServiceRestart) {
+
+    $TimeNow = Get-Date
+    $TimeForRestart = Get-Date -Hour $DailyServiceRestartTime -Minute 0
+
+    Write-Log "Daily Service Restart is enabled, and time is now $TimeNow"
+
+    If ($timenow.Hour -eq $TimeForRestart.Hour) {
+
+        Write-Log "Daily restart time is now `($TimeForRestart`), proceeding to stopping the service"
+
+        # Check current status
+        $Status = (get-service -name "StifleRServer").Status
+
+        If($Status -eq "Running"){
+            Write-Log "StifleR Server Service is currently running, going ahead to stop it"
+
+            # Stop the service
+            Write-Log "Stopping StifleR Server Service"
+            net stop StifleRServer
+            Write-Log "Sleeping 120 seconds"
+            Start-Sleep -Seconds 120
+
+            # If for some reason the service didn't stop correctly - force it.
+            Write-Log "Verifying that the StifleR Service actually stopped"
+            $stiflerproc = Get-Process stifler.service -ErrorAction SilentlyContinue
+            if ($stiflerproc) {
+                Write-Log "WARNING: Service could not be stopped, stopping its process instead"
+                $stiflerproc  | stop-process -Force
+            }
+
+            Start-Sleep -Seconds 10
+        }
+        Else {
+            Write-Log "StifleR Server Service is already stopped, do nothing"
+        }
+    }
+}
+
+
 
 # Start the StifleR Server service if not started
 $Status = (get-service -name "StifleRServer").Status
