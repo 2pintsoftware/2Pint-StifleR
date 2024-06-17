@@ -33,6 +33,7 @@
     1.0.0.5 : 12/21/2023 : Added script/instructions for creating the scheduled task with a service account
     1.0.0.6 : 12/22/2023 : Major rework, additional logging and error handling. Added support for Stifler 2.10
     1.0.0.7 : 04/03/2023 : Minor naming and logic improvements, added custom scripts backup, and additional config file backup
+    1.0.0.8 : 06/17/2024 : Updated comments in the script
 
    .LINK
     https://2pintsoftware.com
@@ -54,7 +55,7 @@ $HealthCheckPath = "E:\2Pint_HealthCheck"
 # Log file
 $LogDate = Get-Date
 $ts = $LogDate.ToString("MMddyyyyHHmmss")
-$LogFile = "$MaintenancePath\Logs\StifleR_Backup_$($ts).log"
+$LogFile = "$MaintenancePath\Logs\StifleR_Backup\StifleR_Backup_$($ts).log"
 If (!(Test-Path $MaintenancePath\Logs)){New-Item -ItemType Directory -Force -Path $MaintenancePath\Logs}
 
 # Backup Locations - please edit these to reflect the correct path to the installation/data folder
@@ -172,7 +173,7 @@ foreach ($Database in $Databases) {
 
         $ESENTUTL = Start-Process ESENTUTL.EXE "/y ""$($SourcePath)"" /vssrec epc . /d ""$($DestinationDatabaseName)""" -NoNewWindow -Wait -PassThru -RedirectStandardOutput $RedirectStandardOutput -RedirectStandardError $RedirectStandardError
 
-        # Log the ESENTUTL Standard Output, skip the empty lines diskpart creates
+        # Log the ESENTUTL Standard Output, skip any empty lines the command creates
         If ((Get-Item $RedirectStandardOutput).length -gt 0){
             Write-Log "----------- ESENTUTL: Begin Standard Output -----------"
             $CleanedRedirectStandardOutput = Get-Content $RedirectStandardOutput | Where-Object {$_.trim() -ne "" } 
@@ -182,7 +183,7 @@ foreach ($Database in $Databases) {
             Write-Log "----------- ESENTUTL: End Standard Output -----------"
         }
 
-        # Log the ESENTUTL Standard Error, skip the empty lines diskpart creates
+        # Log the ESENTUTL Standard Error, skip any empty lines the command creates
         If ((Get-Item $RedirectStandardError).length -gt 0){
             Write-Log "----------- ESENTUTL: Begin Standard Error -----------"
             $CleanedRedirectStandardError = Get-Content $RedirectStandardError | Where-Object {$_.trim() -ne "" } 
@@ -214,7 +215,7 @@ New-Item -Path "$BackupPath\Config" -ItemType Directory -Force
 # Backup the StifleR Server configuration XML
 If (Test-Path $ConfigFile) {Copy-Item $ConfigFile "$BackupPath\Config" -Force}
 
-# Backup the StifleR Server configuration XML
+# Backup the StifleR Server Override configuration XML
 If (Test-Path $OverrideConfigFile) {Copy-Item $OverrideConfigFile "$BackupPath\Config" -Force}
 
 # Backup custom scripts 
