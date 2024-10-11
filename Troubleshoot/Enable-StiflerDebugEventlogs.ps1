@@ -25,13 +25,14 @@
   Resets Stifler logs to their defaul value.
 
 .NOTES
-  Version:        1.1
+  Version:        1.2
   Author:         support@2pintsoftware.com
   Creation Date:  2023-10-20
   Purpose/Change: Initial script development
   
   CHANGE LOG: 
   1.1             2024/03/21 Added option to enable/disble individualy logs. Fixed so that the SetLogMAXSize works on already enabled debug logs.
+  1.2             2024/10/11 Added support for Beacon Service
 
 #>
 #Requires -RunAsAdministrator
@@ -47,17 +48,23 @@ Param (
 )
 
 $IsStiflerServer = $false
+$IsBeaconServer = $false
 $IsStiflerClient = $false
 
 if (Get-service -name StifleRServer -ErrorAction SilentlyContinue) {
     $IsStiflerServer = $true
 }
 
+if (Get-service -name StifleRBeacon -ErrorAction SilentlyContinue) {
+    $IsBeaconServer = $true
+}
+
+
 if (Get-Service -Name StifleRClient -ErrorAction SilentlyContinue) {
     $IsStiflerClient = $true
 }
 
-If (!$IsStiflerServer -and !$IsStiflerClient) {
+If (!$IsStiflerServer -and !$IsStiflerClient -and !$IsBeaconServer) {
     Write-error "No Stifler installed in this machine"
     break
 }
@@ -76,6 +83,14 @@ if ($EventLogs -contains "All" -and $EventLogs.Count -gt 1) {
     Write-Warning "You can't select All debug logs and at the same time specify specific ones!! Make up your mind please!"
     break
 }
+
+$Beacondebuglogfiles = @(
+    "TwoPintSoftware-StifleR.Beacon-Service/Debug"
+)
+
+$Beaconstandardlogfiles = @(
+    "TwoPintSoftware-StifleR.Beacon-Service/Operational"
+)
 
 $serverdebuglogfiles = @(
     "TwoPintSoftware-StifleR.Service-BandwidthWatchdog/Debug",
@@ -138,6 +153,11 @@ $clientstandardlogfiles = @(
     "TwoPintSoftware-StifleR.ClientApp-TypeDetection/Operational"
 )
 
+if ($IsBeaconServer) {
+    $debuglogfiles += $Beacondebuglogfiles
+    $standardlogfiles += $Beaconstandardlogfiles
+}
+
 if ($IsStiflerServer) {
     if ($EventLogs -contains "All" ) {
         $debuglogfiles += $serverdebuglogfiles
@@ -150,6 +170,7 @@ if ($IsStiflerServer) {
         }
     }
 }
+
 if ($IsStiflerClient) {
     if ($EventLogs -contains "All" ) {
         $debuglogfiles += $clientdebuglogfiles
