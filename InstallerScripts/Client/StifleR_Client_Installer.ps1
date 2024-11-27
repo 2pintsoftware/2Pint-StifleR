@@ -21,8 +21,8 @@
    .NOTES
     AUTHOR: 2Pint Software
     EMAIL: support@2pintsoftware.com
-    VERSION: 2.0.0.4
-    DATE:08/09/2023
+    VERSION: 2.0.0.7
+    DATE:11/27/2024
     
     CHANGE LOG: 
     1.0.0.0 : 22/02/2018  : Initial version of script 
@@ -52,6 +52,7 @@
     2.0.0.4 : 08/09/2023  : Bugfix
     2.0.0.5 : 12/15/2023  : Added support for configuring BranchCache Ports
     2.0.0.6 : 12/15/2023  : Added custom hook for detecting between production and preproduction environments
+    2.0.0.7 : 11/27/2024  : Added support for configuring DefaultNonRedLeaderDOPolicy, DefaultNonRedLeaderBITSPolicy, DefaultDisconnectedDOPolicy, DefaultDisconnectedBITSPolicy
 
    EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1 -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
    
@@ -172,6 +173,10 @@ If ($Defaults) {
     $BlueLeaderProxyPort = $FileContent["CONFIG"]["BlueLeaderProxyPort"]
     $GreenLeaderOfferPort = $FileContent["CONFIG"]["GreenLeaderOfferPort"]
     $BranchCachePortForGreenLeader = $FileContent["CONFIG"]["BranchCachePortForGreenLeader"]
+    $DefaultNonRedLeaderDOPolicy = $FileContent["CONFIG"]["DefaultNonRedLeaderDOPolicy"]
+    $DefaultNonRedLeaderBITSPolicy = $FileContent["CONFIG"]["DefaultNonRedLeaderBITSPolicy"]
+    $DefaultDisconnectedDOPolicy = $FileContent["CONFIG"]["DefaultDisconnectedDOPolicy"]
+    $DefaultDisconnectedBITSPolicy = $FileContent["CONFIG"]["DefaultDisconnectedBITSPolicy"]
 
     # Read Prod and PreProd Servers if EnableSiteDetection is set to true
     If($EnableSiteDetection -eq $true){
@@ -223,6 +228,10 @@ If ($Defaults) {
     Write-Debug "BlueLeaderProxyPort: $BlueLeaderProxyPort"
     Write-Debug "GreenLeaderOfferPort: $GreenLeaderOfferPort"
     Write-Debug "BranchCachePortForGreenLeader: $BranchCachePortForGreenLeader"
+    Write-Debug "DefaultNonRedLeaderDOPolicy: $DefaultNonRedLeaderDOPolicy"
+    Write-Debug "DefaultNonRedLeaderBITSPolicy: $DefaultNonRedLeaderBITSPolicy"
+    Write-Debug "DefaultDisconnectedDOPolicy: $DefaultDisconnectedDOPolicy"
+    Write-Debug "DefaultDisconnectedBITSPolicy: $DefaultDisconnectedBITSPolicy"
 }
 If ($Uninstall -eq $true) { $Logfile = "C:\Windows\Temp\StifleRClient.log" }
 write-debug $Uninstall
@@ -909,6 +918,30 @@ If (($VPNStrings) -or ($ForceVPN -eq 1) -or ($EnableBetaFeatures -eq $true) -or 
             New-AppSetting $StifleRConfig "BranchCachePortForGreenLeader" "$BranchCachePortForGreenLeader"    
             Write-Debug "Adding BranchCachePortForGreenLeader to the app config"
             $(TimeStamp) + "Adding BranchCachePortForGreenLeader to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
+        If ($DefaultNonRedLeaderDOPolicy) {
+            New-AppSetting $StifleRConfig "DefaultNonRedLeaderDOPolicy" "$DefaultNonRedLeaderDOPolicy"    
+            Write-Debug "Adding DefaultNonRedLeaderDOPolicy to the app config"
+            $(TimeStamp) + "Adding DefaultNonRedLeaderDOPolicy to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
+        If ($DefaultNonRedLeaderBITSPolicy) {
+            New-AppSetting $StifleRConfig "DefaultNonRedLeaderBITSPolicy" "$DefaultNonRedLeaderBITSPolicy"    
+            Write-Debug "Adding DefaultNonRedLeaderBITSPolicy to the app config"
+            $(TimeStamp) + "Adding DefaultNonRedLeaderBITSPolicy to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
+        If ($DefaultDisconnectedDOPolicy) {
+            New-AppSetting $StifleRConfig "DefaultDisconnectedDOPolicy" "$DefaultDisconnectedDOPolicy"    
+            Write-Debug "Adding DefaultDisconnectedDOPolicy to the app config"
+            $(TimeStamp) + "Adding DefaultDisconnectedDOPolicy to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        }
+
+        If ($DefaultDisconnectedBITSPolicy) {
+            New-AppSetting $StifleRConfig "DefaultDisconnectedBITSPolicy" "$DefaultDisconnectedBITSPolicy"    
+            Write-Debug "Adding DefaultDisconnectedBITSPolicy to the app config"
+            $(TimeStamp) + "Adding DefaultDisconnectedBITSPolicy to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
         }
 
         #enable all debug logging if that switch is $true
