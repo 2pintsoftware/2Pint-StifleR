@@ -21,8 +21,8 @@
    .NOTES
     AUTHOR: 2Pint Software
     EMAIL: support@2pintsoftware.com
-    VERSION: 2.0.0.4
-    DATE:08/09/2023
+    VERSION: 2.0.0.7
+    DATE:11/27/2024
     
     CHANGE LOG: 
     1.0.0.0 : 22/02/2018  : Initial version of script 
@@ -52,6 +52,7 @@
     2.0.0.4 : 08/09/2023  : Bugfix
     2.0.0.5 : 12/15/2023  : Added support for configuring BranchCache Ports
     2.0.0.6 : 12/15/2023  : Added custom hook for detecting between production and preproduction environments
+    2.0.0.7 : 11/27/2024  : Added support for configuring DefaultNonRedLeaderDOPolicy, DefaultNonRedLeaderBITSPolicy, DefaultDisconnectedDOPolicy, DefaultDisconnectedBITSPolicy Thanks @pc222
 
    EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1 -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
    
@@ -164,14 +165,18 @@ If ($Defaults) {
     $MSILOGFILE = $FileContent["MSIPARAMS"]["MSILOGFILE"]
 
     #Config defaults
-    $VPNStrings = $FileContent["CONFIG"]["VPNStrings"]
-    $ForceVPN = $FileContent["CONFIG"]["ForceVPN"]
     $Logfile = $FileContent["CONFIG"]["Logfile"]
     $Features = $FileContent["CONFIG"]["Features"]
-    $BranchCachePort = $FileContent["CONFIG"]["BranchCachePort"]
-    $BlueLeaderProxyPort = $FileContent["CONFIG"]["BlueLeaderProxyPort"]
-    $GreenLeaderOfferPort = $FileContent["CONFIG"]["GreenLeaderOfferPort"]
-    $BranchCachePortForGreenLeader = $FileContent["CONFIG"]["BranchCachePortForGreenLeader"]
+    $Config_VPNStrings = $FileContent["CONFIG"]["VPNStrings"]
+    $Config_ForceVPN = $FileContent["CONFIG"]["ForceVPN"]
+    $Config_BranchCachePort = $FileContent["CONFIG"]["BranchCachePort"]
+    $Config_BlueLeaderProxyPort = $FileContent["CONFIG"]["BlueLeaderProxyPort"]
+    $Config_GreenLeaderOfferPort = $FileContent["CONFIG"]["GreenLeaderOfferPort"]
+    $Config_BranchCachePortForGreenLeader = $FileContent["CONFIG"]["BranchCachePortForGreenLeader"]
+    $Config_DefaultNonRedLeaderDOPolicy = $FileContent["CONFIG"]["DefaultNonRedLeaderDOPolicy"]
+    $Config_DefaultNonRedLeaderBITSPolicy = $FileContent["CONFIG"]["DefaultNonRedLeaderBITSPolicy"]
+    $Config_DefaultDisconnectedDOPolicy = $FileContent["CONFIG"]["DefaultDisconnectedDOPolicy"]
+    $Config_DefaultDisconnectedBITSPolicy = $FileContent["CONFIG"]["DefaultDisconnectedBITSPolicy"]
 
     # Read Prod and PreProd Servers if EnableSiteDetection is set to true
     If($EnableSiteDetection -eq $true){
@@ -215,14 +220,18 @@ If ($Defaults) {
     Write-Debug "StifleR Debug Level: $DEBUGLOG"
     Write-Debug "StifleR Rules download timer: $RULESTIMER"
     Write-Debug "MSI Logfile: $MSILOGFILE"
-    Write-Debug "Custom VPN Strings: $VPNStrings"
-    Write-Debug "Force VPN?: $ForceVPN"
+    Write-Debug "Custom VPN Strings: $Config_VPNStrings"
+    Write-Debug "Force VPN?: $Config_ForceVPN"
     Write-Debug "This script logs to: $Logfile"
     Write-Debug "New features will be added: $Features"
-    Write-Debug "BranchCachePort: $BranchCachePort"
-    Write-Debug "BlueLeaderProxyPort: $BlueLeaderProxyPort"
-    Write-Debug "GreenLeaderOfferPort: $GreenLeaderOfferPort"
-    Write-Debug "BranchCachePortForGreenLeader: $BranchCachePortForGreenLeader"
+    Write-Debug "BranchCachePort: $Config_BranchCachePort"
+    Write-Debug "BlueLeaderProxyPort: $Config_BlueLeaderProxyPort"
+    Write-Debug "GreenLeaderOfferPort: $Config_GreenLeaderOfferPort"
+    Write-Debug "BranchCachePortForGreenLeader: $Config_BranchCachePortForGreenLeader"
+    Write-Debug "DefaultNonRedLeaderDOPolicy: $Config_DefaultNonRedLeaderDOPolicy"
+    Write-Debug "DefaultNonRedLeaderBITSPolicy: $Config_DefaultNonRedLeaderBITSPolicy"
+    Write-Debug "DefaultDisconnectedDOPolicy: $Config_DefaultDisconnectedDOPolicy"
+    Write-Debug "DefaultDisconnectedBITSPolicy: $Config_DefaultDisconnectedBITSPolicy"
 }
 If ($Uninstall -eq $true) { $Logfile = "C:\Windows\Temp\StifleRClient.log" }
 write-debug $Uninstall
@@ -757,7 +766,7 @@ else {
 #Finally, edit the .Config with any custom VPNStrings or debug settings
 #First we need to stop the service
 #if we updated any VPN stuff we will restart so that the connection can be updated with that info
-If (($VPNStrings) -or ($ForceVPN -eq 1) -or ($EnableBetaFeatures -eq $true) -or ($FullDebugMode -eq $true)) {
+If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) -or ($FullDebugMode -eq $true)) {
     Write-Debug "Sleeping 30 secs please wait..."
     $(TimeStamp) + "Sleeping 30 secs please wait...:" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Start-Sleep -s 30 #wait for 30 secs to let the svc start correctly before restarting
@@ -864,19 +873,6 @@ If (($VPNStrings) -or ($ForceVPN -eq 1) -or ($EnableBetaFeatures -eq $true) -or 
         $error.clear()
         #Edits the Stifler App.Config XML
 
-        #Only add VPNStrings if there is a value there - if not skip
-        If ($VPNStrings) { 
-            New-AppSetting $StifleRConfig "VPNStrings" "$VPNStrings"    
-            Write-Debug "Adding custom VPN Strings to the app config"
-            $(TimeStamp) + "Adding custom VPN Strings to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        }
-        #Add ForceVPN if required
-        If ($ForceVPN -eq 1) { 
-            New-AppSetting $StifleRConfig "ForceVPN" "$ForceVPN"    
-            Write-Debug "Adding Force VPN to the app config"
-            $(TimeStamp) + "Adding Force VPN to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        }
-
         #enable Beta features if that switch is $true
         If ($EnableBetaFeatures -eq $true) {
             Write-Debug "Enabling Beta features: $Features"
@@ -887,28 +883,14 @@ If (($VPNStrings) -or ($ForceVPN -eq 1) -or ($EnableBetaFeatures -eq $true) -or 
             Set-AppSetting $StifleRConfig $key $a
         }
 
-        If ($BranchCachePort) {
-            Set-AppSetting $StifleRConfig "BranchCachePort" "$BranchCachePort"    
-            Write-Debug "Setting BranchCachePort in the app config"
-            $(TimeStamp) + "Setting BranchCachePort in the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        }
+        Foreach($configItem in Get-Variable -Name "Config_*")
+        {
+            If ($configItem.Value) { 
 
-        If ($BlueLeaderProxyPort) {
-            Set-AppSetting $StifleRConfig "BlueLeaderProxyPort" "$BlueLeaderProxyPort"    
-            Write-Debug "Setting BlueLeaderProxyPort in the app config"
-            $(TimeStamp) + "Setting BlueLeaderProxyPort in the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        }
-
-        If ($GreenLeaderOfferPort) {
-            Set-AppSetting $StifleRConfig "GreenLeaderOfferPort" "$GreenLeaderOfferPort"    
-            Write-Debug "Setting GreenLeaderOfferPort in the app config"
-            $(TimeStamp) + "Setting GreenLeaderOfferPort in the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        }
-
-        If ($BranchCachePortForGreenLeader) {
-            New-AppSetting $StifleRConfig "BranchCachePortForGreenLeader" "$BranchCachePortForGreenLeader"    
-            Write-Debug "Adding BranchCachePortForGreenLeader to the app config"
-            $(TimeStamp) + "Adding BranchCachePortForGreenLeader to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+                New-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)"    
+                Write-Debug "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config"
+                $(TimeStamp) + "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+            }   
         }
 
         #enable all debug logging if that switch is $true
