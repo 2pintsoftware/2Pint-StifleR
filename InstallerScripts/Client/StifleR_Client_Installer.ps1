@@ -52,7 +52,7 @@
     2.0.0.4 : 08/09/2023  : Bugfix
     2.0.0.5 : 12/15/2023  : Added support for configuring BranchCache Ports
     2.0.0.6 : 12/15/2023  : Added custom hook for detecting between production and preproduction environments
-    2.0.0.7 : 11/27/2024  : Added support for configuring DefaultNonRedLeaderDOPolicy, DefaultNonRedLeaderBITSPolicy, DefaultDisconnectedDOPolicy, DefaultDisconnectedBITSPolicy Thanks @pc222
+    2.0.0.7 : 11/27/2024  : Added support for configuring DefaultNonRedLeaderDOPolicy, DefaultNonRedLeaderBITSPolicy, DefaultDisconnectedDOPolicy, DefaultDisconnectedBITSPolicy Thanks @pc222   
 
    EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1 -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
    
@@ -144,7 +144,7 @@ If (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient"-ErrorActio
     if ($ClientAppPath -eq "C:\Windows\Temp\StifleR\StifleR.ClientApp.exe") { 
         $StifleRClientTempInstallation = $true 
         Write-Debug "`$StifleRClientTempInstallation = $StifleRClientTempInstallation"
-        }
+    }
     $VerMajor = (Get-Command $ClientAppPath ).FileVersionInfo.FileMajorPart
     $VerMinor = (Get-Command $ClientAppPath ).FileVersionInfo.FileMinorPart
 }
@@ -179,7 +179,7 @@ If ($Defaults) {
     $Config_DefaultDisconnectedBITSPolicy = $FileContent["CONFIG"]["DefaultDisconnectedBITSPolicy"]
 
     # Read Prod and PreProd Servers if EnableSiteDetection is set to true
-    If($EnableSiteDetection -eq $true){
+    If ($EnableSiteDetection -eq $true) {
         $ProductionStifleRServers = $FileContent["CONFIG"]["ProductionStifleRServers"]
         $ProductionStifleRulezUrl = $FileContent["CONFIG"]["ProductionStifleRulezUrl"]
         $PreProductionStifleRServers = $FileContent["CONFIG"]["PreProductionStifleRServers"]
@@ -190,11 +190,11 @@ If ($Defaults) {
         # --------------------------- 
         $Domain = (Get-ChildItem env:USERDOMAIN).value
 
-        if ($Domain -eq "DOMAIN"){
+        if ($Domain -eq "DOMAIN") {
             $Production = $true
             Write-Debug "Production variable set to true"
         }
-        Else{
+        Else {
             $Production = $false
             Write-Debug "Production variable set to false"
         } 
@@ -203,11 +203,11 @@ If ($Defaults) {
         # END CUSTOM SITE DETECTION
         # --------------------------- 
 
-        If ($Production -eq $true){
+        If ($Production -eq $true) {
             $STIFLERSERVERS = $ProductionStifleRServers 
             $STIFLERULEZURL = $ProductionStifleRulezUrl
         }
-        Else{
+        Else {
             $STIFLERSERVERS = $PreProductionStifleRServers
             $STIFLERULEZURL = $PreProductionStifleRulezUrl
         }
@@ -522,15 +522,14 @@ If ($svcpath) {
     $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
     $State = $SvcStatus | Select-String "STATE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 }
     $(TimeStamp) + "The current state of the service is: $State"
-    If($State -eq "STOPPED"){
+    If ($State -eq "STOPPED") {
         $(TimeStamp) + "Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
     Else {
         $(TimeStamp) + "Service is running, trying to stop it." | Out-File -FilePath $Logfile -Append -Encoding ascii
         Invoke-Command -ScriptBlock $SCStopCmd | Out-Null
-        $loopCounter=0
-        do 
-        { 
+        $loopCounter = 0
+        do { 
             $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
             $State = $SvcStatus | Select-String "STATE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 }
             Start-Sleep -Seconds 5
@@ -540,20 +539,20 @@ If ($svcpath) {
         } until (($State -eq "STOPPED") -or $loopcounter -eq 12)
     
         # Service should be stopped now, kill the process if its not
-        If($State -eq "STOPPED"){
+        If ($State -eq "STOPPED") {
             $(TimeStamp) + "Second Check: Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
         }
-        Else{
+        Else {
             $(TimeStamp) + "Service could not be stopped, stop the process." | Out-File -FilePath $Logfile -Append -Encoding ascii
             Get-Process StifleR.ClientApp | Stop-Process -Force
         }
     }
 
     # Final Check: Service should be stopped now, abort the script if its not
-    If($State -eq "STOPPED"){
+    If ($State -eq "STOPPED") {
         $(TimeStamp) + "Final Check: Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
-    Else{
+    Else {
         $(TimeStamp) + "Service could not be stopped, aborting script." | Out-File -FilePath $Logfile -Append -Encoding ascii
         Break
     }
@@ -883,13 +882,18 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
             Set-AppSetting $StifleRConfig $key $a
         }
 
-        Foreach($configItem in Get-Variable -Name "Config_*")
-        {
+        Foreach ($configItem in Get-Variable -Name "Config_*") {
             If ($configItem.Value) { 
-
-                New-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)"    
-                Write-Debug "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config"
-                $(TimeStamp) + "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+                if ((Get-Appsetting $StifleRConfig | Where-Object { $_.key -eq $(($configItem.Name -split "_")[1]) }).key) {
+                    Set-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)"    
+                    Write-Debug "Setting custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config"
+                    $(TimeStamp) + "Setting custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+                }
+                else {
+                    New-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)"    
+                    Write-Debug "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config"
+                    $(TimeStamp) + "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
+                }
             }   
         }
 
