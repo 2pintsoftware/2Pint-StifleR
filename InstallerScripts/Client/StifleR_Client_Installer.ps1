@@ -205,17 +205,19 @@ If ($Defaults) {
 
     # Read Prod and PreProd Servers if EnableSiteDetection is set to true
     If ($EnableSiteDetection -eq $true) {
-        $ProductionStifleRServers = $FileContent["CONFIG"]["ProductionStifleRServers"]
-        $ProductionStifleRulezUrl = $FileContent["CONFIG"]["ProductionStifleRulezUrl"]
-        $PreProductionStifleRServers = $FileContent["CONFIG"]["PreProductionStifleRServers"]
-        $PreProductionStifleRulezUrl = $FileContent["CONFIG"]["PreProductionStifleRServers"]
+        $EnableSiteDetectionDomain = $FileContent["CUSTOM"]["DOMAIN"]
+        Write-Debug "EnableSiteDetectionDomain is set to true and using: $EnableSiteDetectionDomain"
+        $ProductionStifleRServers = $FileContent["CUSTOM"]["ProductionStifleRServers"]
+        $ProductionStifleRulezUrl = $FileContent["CUSTOM"]["ProductionStifleRulezUrl"]
+        $PreProductionStifleRServers = $FileContent["CUSTOM"]["PreProductionStifleRServers"]
+        $PreProductionStifleRulezUrl = $FileContent["CUSTOM"]["PreProductionStifleRServers"]
 
         # ---------------------------
         # BEGIN CUSTOM SITE DETECTION
         # --------------------------- 
         $Domain = (Get-ChildItem env:USERDOMAIN).value
 
-        if ($Domain -eq "DOMAIN") {
+        if ($Domain -eq $EnableSiteDetectionDomain) {
             $Production = $true
             Write-Debug "Production variable set to true"
         }

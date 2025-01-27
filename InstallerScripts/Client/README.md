@@ -1,10 +1,13 @@
 Stifler Client Install script changelog:
 
     2.1.0.0 : 27/01/2025  : Major rewrite of logic
+                                - Removed the script "Logfile" setting from the [Config] section of the ini-file and created a script param of it instead
                                 - Changed from sc.exe to PowerShell Native Get-service/.Net method to support localized OS
                                 - Added Support for comments in StiflerDefaults.ini
                                 - Dynammicaly read settings under the [Config] section of StiflerDefaults.ini
                                 - Removed obsolete code
+                                - Moved Changelog to github.
+                                - Added optional [CUSTOM] section in the defaults.ini example that can be used for automatic prod/preprod detection
     
     2.0.0.7 : 11/27/2024  : Added support for configuring DefaultNonRedLeaderDOPolicy, DefaultNonRedLeaderBITSPolicy, DefaultDisconnectedDOPolicy, DefaultDisconnectedBITSPolicy Thanks @pc222
     2.0.0.6 : 12/15/2023  : Added custom hook for detecting between production and preproduction environments
