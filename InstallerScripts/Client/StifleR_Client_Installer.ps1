@@ -472,14 +472,16 @@ If ($svcpath) {
             $Service = Get-Service -Name $Sname -ErrorAction SilentlyContinue
             if ($Service.Status -eq 'Stopped') {
                 $loopcounter = 0
-                $TSpan = (Get-Date) - (New-TimeSpan -Second 20)
+                $TSpan = (Get-Date).AddSeconds(-20).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
     
                 # Keep existing event log query logic
-                If (($vermajor -eq 2) -and ($verminor -ge 7)) {
+                if (($vermajor -eq 2) -and ($verminor -ge 7)) {
                     $query = @"
 <QueryList>
     <Query Id="0" Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
-    <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">*[System[(EventID=295)]]</Select>
+        <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
+            *[System[(EventID=295) and TimeCreated[@SystemTime&gt;='$TSpan']]]
+        </Select>
     </Query>
 </QueryList>
 "@
@@ -488,14 +490,17 @@ If ($svcpath) {
                     $query = @"
 <QueryList>
     <Query Id="0" Path="StifleR">
-    <Select Path="StifleR">*[System[(EventID=0)]] and *[EventData[Data='Service Shutdown Completed.']]</Select>
+        <Select Path="StifleR">
+            *[System[(EventID=0) and TimeCreated[@SystemTime&gt;='$TSpan']]] and 
+            *[EventData[Data='Service Shutdown Completed.']]
+        </Select>
     </Query>
 </QueryList>
 "@
                 }
-    
+                
                 do {
-                    $evt = Get-WinEvent -FilterXml $query | Select-Object -First 1 | Where-Object { $_.TimeCreated -ge $TSpan }
+                    $evt = Get-WinEvent -FilterXml $query -ErrorAction SilentlyContinue | Select-Object -First 1
                     Write-Debug "Waiting for shutdown event: $loopcounter"
                     Start-Sleep -Seconds 2
                     $loopCounter++
@@ -777,7 +782,7 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
     
         if ($Service.Status -eq 'Stopped') {
             $loopcounter = 0
-            $TSpan = (Get-Date) - (New-TimeSpan -Second 20)
+            $TSpan = (Get-Date).AddSeconds(-20).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
             
             if (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient" -ErrorAction SilentlyContinue) {
                 $VerMajor = (Get-Command 'C:\Program Files\2Pint Software\StifleR Client\stifler.clientapp.exe').FileVersionInfo.FileMajorPart
@@ -788,7 +793,9 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
                 $query = @"
 <QueryList>
     <Query Id="0" Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
-    <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">*[System[(EventID=295)]]</Select>
+        <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
+            *[System[(EventID=295) and TimeCreated[@SystemTime&gt;='$TSpan']]]
+        </Select>
     </Query>
 </QueryList>
 "@
@@ -797,14 +804,17 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
                 $query = @"
 <QueryList>
     <Query Id="0" Path="StifleR">
-    <Select Path="StifleR">*[System[(EventID=0)]] and *[EventData[Data='Service Shutdown Completed.']]</Select>
+        <Select Path="StifleR">
+            *[System[(EventID=0) and TimeCreated[@SystemTime&gt;='$TSpan']]] and 
+            *[EventData[Data='Service Shutdown Completed.']]
+        </Select>
     </Query>
 </QueryList>
 "@
             }
-    
-            do { 
-                $evt = Get-WinEvent -FilterXml $query | Select-Object -First 1 | Where-Object { $_.TimeCreated -ge $TSpan }
+            
+            do {
+                $evt = Get-WinEvent -FilterXml $query -ErrorAction SilentlyContinue | Select-Object -First 1
                 Write-Debug "Waiting for shutdown event: $loopcounter"
                 Start-Sleep -Seconds 2
                 $loopCounter++
