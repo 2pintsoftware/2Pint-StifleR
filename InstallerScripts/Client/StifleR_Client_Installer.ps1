@@ -62,7 +62,7 @@ param (
     [bool]$EnableSiteDetection = $false, # Set to $true to turn on any new features (added in the defaults .ini) 
     [Parameter(Mandatory = $false)][ValidateSet("SilentlyContinue", "Continue")][string]$DebugPreference
 )
-Function TimeStamp { $(Get-Date -UFormat "%D %T") }
+Function TimeStamp { $(Get-Date -UFormat "%D %T ") }
 Function Get-IniContent {
     <#
     .Synopsis
@@ -315,7 +315,7 @@ Function Uninstall-App ($SearchString) {
         If ($ver.UninstallString) {                                
                                     
             $uninstallString = ([string]$ver.UninstallString).ToLower().Replace("/i", "").Replace("msiexec.exe", "")
-            $(TimeStamp) + " Uninstalling StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
+            $(TimeStamp) + "Uninstalling StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
                                     
             start-process "msiexec.exe" -arg "$uninstallString /qn" -Wait 
             Return $True
@@ -376,13 +376,13 @@ function Set-AppSetting
 If (Test-Path $Logfile) { Remove-Item $Logfile -Force -ErrorAction SilentlyContinue -Confirm:$false } 
 else { New-Item -Path $Logfile -ItemType File -Force }
 
-$(TimeStamp) + " Running on: " + $env:PROCESSOR_ARCHITECTURE | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Running on: " + $env:PROCESSOR_ARCHITECTURE | Out-File -FilePath $Logfile -Append -Encoding ascii
 Write-Debug "Running on:    $env:PROCESSOR_ARCHITECTURE"
 #-----------------------------------------------------------
 #     Check that we got a valid MSI to install - or exit
 #----------------------------------------------------------- 
 If (!(Test-Path $msiFile)) {
-    $(TimeStamp) + " No MSI file found - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "No MSI file found - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
     write-error " No MSI file found - Exiting"
     Exit 1
 }
@@ -418,7 +418,7 @@ If ($svcpath) {
     #        and wait for up to 10 mins
     #-----------------------------------------------------------
 
-    $(TimeStamp) + " Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Checking for other MSI Installs in progress"
     $LoopCounter = 0
     $MSIInProgress = $True
@@ -451,7 +451,7 @@ If ($svcpath) {
     #        Remove the StifleR Client by running the Uninstall
     #----------------------------------------------------------- 
     #First - Stop the Service as this can cause the uninstall to fail on occasion if it takes too long
-    $(TimeStamp) + " Stopping Existing Services" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Stopping Existing Services" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Stopping Existing Services"
     
     # Get initial service status
@@ -459,13 +459,13 @@ If ($svcpath) {
     
     if ($Service.Status -eq 'Stopped') {
         Write-Debug "Service was already stopped"
-        $(TimeStamp) + " Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        $(TimeStamp) + "Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
     else {
         $null = Stop-ServiceWithTimeout -name $Sname -timeoutSeconds 60
      
         if ($StifleRClientTempInstallation) {
-            $(TimeStamp) + " Client is installed under c:\Windows\Temp there will be no eventlog so waiting some extra time to make sure." | Out-File -FilePath $Logfile -Append -Encoding ascii
+            $(TimeStamp) + "Client is installed under c:\Windows\Temp there will be no eventlog so waiting some extra time to make sure." | Out-File -FilePath $Logfile -Append -Encoding ascii
             Start-Sleep -Seconds 15
         }
         else {
@@ -556,28 +556,28 @@ If ($svcpath) {
 }
 Else {
     Write-Debug "StifleR Service not found, possible new install"
-    $(TimeStamp) + " StifleR Service not found, possible new install" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "StifleR Service not found, possible new install" | Out-File -FilePath $Logfile -Append -Encoding ascii
 }
 
 #-------------------------------------------
 #DETECT EXISTING INSTALL(s) AND REMOVE
 #-------------------------------------------
-$(TimeStamp) + " Checking for existing Installation" | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Checking for existing Installation" | Out-File -FilePath $Logfile -Append -Encoding ascii
 
 
 If ((Uninstall-App "StifleR Client") -eq $True) {
-    $(TimeStamp) + " Successfully removed old version" | Out-File -FilePath $Logfile -Append -Encoding ascii;
+    $(TimeStamp) + "Successfully removed old version" | Out-File -FilePath $Logfile -Append -Encoding ascii;
     Write-Debug "Successfully removed old version" 
 
     #-------------------------------------------
     #Remove the Logs and Client data folders
     #-------------------------------------------
 
-    $(TimeStamp) + " Removing Logs folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Removing Logs folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Removing Logs folders"
     If (Test-Path $DebugLogPath) { Remove-Item $DebugLogPath -Recurse -Force -ErrorAction SilentlyContinue -Confirm:$false }
 
-    $(TimeStamp) + " Removing Client Data folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Removing Client Data folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Removing Client Data folders"
     If (Test-Path $DataPath) { Remove-Item $DataPath -Recurse -Force -ErrorAction SilentlyContinue -Confirm:$false }
     #-------------------------------------------
@@ -585,14 +585,14 @@ If ((Uninstall-App "StifleR Client") -eq $True) {
     #-------------------------------------------
     If ($IsStifleRServer = "False") {
 
-        $(TimeStamp) + " Removing old event log" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        $(TimeStamp) + "Removing old event log" | Out-File -FilePath $Logfile -Append -Encoding ascii
         Write-Debug "Removing the old Event log"
         $log = try {
             Get-WinEvent -Log $EventLogName -ErrorAction Stop
         }
         catch [Exception] {
             if ($_.Exception -match "There is not an event log") {
-                $(TimeStamp) + " No event log found to remove" | Out-File -FilePath $Logfile -Append -Encoding ascii;
+                $(TimeStamp) + "No event log found to remove" | Out-File -FilePath $Logfile -Append -Encoding ascii;
                 Write-Debug " No event log found to remove"
             }
         }
@@ -616,7 +616,7 @@ If ((Uninstall-App "StifleR Client") -eq $True) {
 
 }
 Else {
-    $(TimeStamp) + " Failed to remove old version - or it wasn't installed" | Out-File -FilePath $Logfile -Append -Encoding ascii;
+    $(TimeStamp) + "Failed to remove old version - or it wasn't installed" | Out-File -FilePath $Logfile -Append -Encoding ascii;
     Write-Debug " Failed to remove old version - or it wasn't installed?"
     If ($Uninstall -eq $true) {
         Write-Debug "Uninstall Complete - exiting"
@@ -626,7 +626,7 @@ Else {
 }
 
 
-$(TimeStamp) + " Installing New Version" | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Installing New Version" | Out-File -FilePath $Logfile -Append -Encoding ascii
 Write-Debug "Installing New Version"
 
 #-----------------------------------------------------------
@@ -650,7 +650,7 @@ If (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient"-ErrorActio
 #        and wait for up to 10 mins
 #-----------------------------------------------------------
 
-$(TimeStamp) + " Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
 Write-Debug "Checking for other MSI Installs in progress"
 $LoopCounter = 0
 $MSIInProgress = $True
@@ -737,13 +737,13 @@ If (@(0, 3010) -contains $return.exitcode) {
     Select-Object -Property DisplayName, UninstallString, Displayversion
 
     ForEach ($ver in $StifCli) {                  
-        $(TimeStamp) + " Installed StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
+        $(TimeStamp) + "Installed StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
         Write-Debug "Installed StifleR Client Version: $($ver.Displayversion)"
     }
 }# END MSI Install
 
 else {
-    $(TimeStamp) + " MSI failed with Error" + $return.exitcode | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "MSI failed with Error" + $return.exitcode | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Error "MSI install failed with Error  $($return.exitcode) "
     Exit 1
 }
@@ -766,7 +766,7 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
 
     if ($Service.Status -eq 'Stopped') {
         Write-Debug "Service was already stopped"
-        $(TimeStamp) + " Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        $(TimeStamp) + "Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
     else {
         Stop-Service -Name $Sname -Force -ErrorAction SilentlyContinue
