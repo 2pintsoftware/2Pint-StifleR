@@ -1,14 +1,12 @@
 <#
     .Synopsis
-        Checks to see if we are running on x64 or x86 and selects the correct MSI
-        Stops the StifleR service (if present)
-        Remove the StifleR Client. 
-        Cleans up the environment (event log/logs etc)
-        Istalls the new version
-        Logs to a file in \Windows\Temp
-        TODO:
-        Maybe parameterize the server fqdn etc
-
+        Installs or uninstalls the StifleR Client software with the following steps:
+        - Validates system architecture (x64/x86) and selects appropriate MSI
+        - Handles service management (stop/start/cleanup)
+        - Performs clean installation or upgrade
+        - Configures client settings via INI file
+        - Provides detailed logging and debugging options
+        - Supports command-line parameters for automation
 
     .REQUIREMENTS
        Must be run from the same folder as the .MSI(s) that you want to install
@@ -16,45 +14,41 @@
     .USAGE
        Set the server name etc in the #Optional MSIEXEC params section below
 
+    .PARAMETER Defaults
+        Path to the configuration INI file containing default settings for installation
 
+    .PARAMETER Uninstall
+        [Boolean] When set to true, uninstalls the StifleR Client
+        Default: False
+
+    .PARAMETER FullDebugMode
+        [Boolean] Enables detailed debug logging for troubleshooting
+        Default: False
+
+    .PARAMETER Logfile
+        [String] Path to the log file for installation logging
+        Default: C:\Windows\Temp\StifleRInstaller.log
+
+    .PARAMETER EnableSiteDetection
+        [Boolean] Enables new features defined in the defaults INI file
+        Default: False
+
+    .PARAMETER DebugPreference
+        [String] Sets PowerShell debug output preference
+        Valid values: "SilentlyContinue", "Continue"
+        Default: Not set
 
    .NOTES
     AUTHOR: 2Pint Software
     EMAIL: support@2pintsoftware.com
-    VERSION: 2.0.0.7
-    DATE:11/27/2024
+    VERSION: 2.1.0.0
+    DATE:01/27/2025
     
     CHANGE LOG: 
-    1.0.0.0 : 22/02/2018  : Initial version of script 
-    1.0.0.2 : 27/04/2018  : Changed the uninstall detection and execution 
-    1.0.0.3 : 28/04/2018  : Added more cleanup & logging                            
-    1.0.0.4 : 02/05/2018  : Included local policy check    
-    1.0.0.5 : 10/12/2018  : Removed local policy check, fixed a couple of bugs, changed order of things
-    1.0.0.6 : 21/05/2019  : Removed reg cleanup as that causes duplicate client instances in 2.x client
-    1.0.0.7 : 22/08/2019  : Minor changes to pre-install cleanup
-    1.0.0.8 : 30/08/2019  : Added better MSI error handling and logging. Only exit with 0 if install is a success
-    1.0.0.9 : 30/08/2019  : Removed the warning during service stop, cleaned up logging
-    1.0.1.0 : 11/10/2019  : Discovers the install path and if installed gets values from the .config for data/logs folders etc
-    1.0.1.1 : 25/10/2019  : Minor tweaks to logging
-	1.0.1.2 : 26/11/2019  : Enabled MSI logging by default, set default debuglevel to 0, set rules interval to 86400, and added check for elevation
-	1.0.1.3 : 25/01/2020  : Added support for 'VPNStrings' and custom install folder, 
-                            now uses defaults.ini for install settings (required on cmd line) new cmd line params -FullDebugMode (true/false) and Debug option
-    1.0.1.4 : 16/04/2020  : Added support for ForceVPN in the settings .ini and app config. Removed -VerbosePreference switch
-    1.0.1.5 : 12/05/2020  : Added support for adding new Features via the settings .ini -EnableBetaFeatures (default is false/0)
-    1.0.2.0 : 27/05/2020  : changed the svc stop to using Net Stop and added a check for the service state, backup the .config file, better error checking for service stop/start
-                            Checks for running MSI installs
-    1.0.2.1 : 30/05/2020  : Stops if the svc is marked for deletion - checks in 2 places. Only tries to remove logs etc if there is an old version installed
-    1.0.2.2 : 06/06/2020  : Added Uninstall option EXAMPLE: .\StifleR_Client_Installer.ps1 -Uninstall 1 -DebugPreference Continue
-    2.0.0.0 : 15/09/2021  : Updated for V2.7 Client Install. Supports upgrade from 2.6.x to 2.7.x
-    2.0.0.1 : 26/10/2022  : Creates subfolder(s) to logfile if they are missing
-    2.0.0.2 : 26/10/2022  : Bugfixes + check if the client is installed under C:\Windows\temp during OSD and skip eventlog queries.
-    2.0.0.3 : 05/06/2023  : Bugfixes + Removed Install Stifler ETW Logic, handle by installer. 
-    2.0.0.4 : 08/09/2023  : Bugfix
-    2.0.0.5 : 12/15/2023  : Added support for configuring BranchCache Ports
-    2.0.0.6 : 12/15/2023  : Added custom hook for detecting between production and preproduction environments
-    2.0.0.7 : 11/27/2024  : Added support for configuring DefaultNonRedLeaderDOPolicy, DefaultNonRedLeaderBITSPolicy, DefaultDisconnectedDOPolicy, DefaultDisconnectedBITSPolicy Thanks @pc222   
+    See GitHub for full change log
+    https://github.com/2pintsoftware/2Pint-StifleR/tree/master/InstallerScripts/Client
 
-   EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1 -ForceVPN 1 -EnableBetaFeatures 1 -DebugPreference Continue
+   EXAMPLE: .\StifleR_Client_Installer.ps1 -Defaults .\StifleRDefaults.ini -FullDebugMode 1 -ForceVPN 1 -Logfile "C:\Windows\Temp\StifleRInstaller.log" -DebugPreference Continue
    
 
    .LINK
@@ -64,11 +58,11 @@ param (
     [string]$Defaults,
     [bool] $Uninstall = $false, #set to true for uninstall only
     [bool]$FullDebugMode = $false, #set to $true to turn on all debug logging to the max
-    [bool]$EnableBetaFeatures = $false, #set to $true to turn on any new features (added in the defaults .ini) 
+    [string]$Logfile = "C:\Windows\Temp\StifleRInstaller.log", # File that script will log to by default
     [bool]$EnableSiteDetection = $false, # Set to $true to turn on any new features (added in the defaults .ini) 
     [Parameter(Mandatory = $false)][ValidateSet("SilentlyContinue", "Continue")][string]$DebugPreference
 )
-Function TimeStamp { $(Get-Date -UFormat "%D %T") }
+Function TimeStamp { $(Get-Date -UFormat "%D %T ") }
 Function Get-IniContent {
     <#
     .Synopsis
@@ -116,9 +110,10 @@ Function Get-IniContent {
                 $value = $matches[1]
                 $CommentCount = $CommentCount + 1
                 $name = "Comment" + $CommentCount
-                $ini[$section][$name] = $value
+                # Do not return comments
+                # $ini[$section][$name] = $value
             } 
-            "^\s*([^#].+?)=(.*)" {
+            "^\s*([^#;].+?)=(.*)" {
                 # Key
                 if (!($section)) {
                     $section = "No-Section"
@@ -134,6 +129,71 @@ Function Get-IniContent {
         
     End
     { Write-Debug "$($MyInvocation.MyCommand.Name):: Function ended" }
+}
+
+function Stop-ServiceWithTimeout ([string] $name, [int] $timeoutSeconds, [switch] $Force) {
+    $timespan = New-Object -TypeName System.Timespan -ArgumentList 0, 0, $timeoutSeconds
+    $svc = Get-Service -Name $name
+    if ($null -eq $svc) { return $false }
+    if ($svc.Status -eq [ServiceProcess.ServiceControllerStatus]::Stopped) { return $true }
+    
+    $svc.Stop()
+    $startTime = Get-Date
+    $loopCounter = 0
+    
+    while ((Get-Date) - $startTime -lt $timespan) {
+        $svc.Refresh()
+        if ($svc.Status -eq [ServiceProcess.ServiceControllerStatus]::Stopped) {
+            return $true
+        }
+        
+        if ($loopCounter % 5 -eq 0) {
+            Write-Debug "Waiting for Service to stop: $($loopCounter) Seconds Elapsed"
+        }
+        
+        Start-Sleep -Seconds 1
+        $loopCounter++
+    }
+    Write-Debug "Waiting for Service to stop: $($loopCounter) Seconds Elapsed"
+ 
+    if ($Force) {
+        Write-Debug "Force stopping service"
+        Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force
+        Start-Sleep -Seconds 5
+        return $true
+    }
+    else {
+        Write-Verbose "Timeout stopping service $($svc.Name)"
+    }
+    
+    return $false
+}
+
+function Get-StifleRURLsFromTempInstallConfig {
+
+    # Define the path to the config file
+    $configFilePath = "C:\Windows\Temp\StifleR\StifleR.ClientApp.exe.Config"
+
+    # Check if the config file exists
+    if (-Not (Test-Path -Path $configFilePath)) {
+        Write-Debug "Config file not found at path: $configFilePath"
+        return
+    }
+
+    # Load the XML content from the config file
+    [xml]$configContent = Get-Content -Path $configFilePath
+
+    # Extract the values for StiflerServers and StifleRulezURL
+    $stiflerServers = $configContent.configuration.appSettings.add | Where-Object { $_.key -eq "StiflerServers" } | Select-Object -ExpandProperty value
+    $stifleRulezURL = $configContent.configuration.appSettings.add | Where-Object { $_.key -eq "StifleRulezURL" } | Select-Object -ExpandProperty value
+
+    # Output the values
+
+    $Output = New-Object -TypeName PSObject
+    $Output | Add-Member -MemberType NoteProperty -Name "StiflerServers" -Value "$stiflerServers" -Force
+    $Output | Add-Member -MemberType NoteProperty -Name "StifleRulezURL" -Value "$stifleRulezURL"  -Force
+
+    return $Output
 }
 
 Write-Debug "Starting Install"
@@ -164,33 +224,27 @@ If ($Defaults) {
     $RULESTIMER = $FileContent["MSIPARAMS"]["RULESTIMER"]
     $MSILOGFILE = $FileContent["MSIPARAMS"]["MSILOGFILE"]
 
-    #Config defaults
-    $Logfile = $FileContent["CONFIG"]["Logfile"]
-    $Features = $FileContent["CONFIG"]["Features"]
-    $Config_VPNStrings = $FileContent["CONFIG"]["VPNStrings"]
-    $Config_ForceVPN = $FileContent["CONFIG"]["ForceVPN"]
-    $Config_BranchCachePort = $FileContent["CONFIG"]["BranchCachePort"]
-    $Config_BlueLeaderProxyPort = $FileContent["CONFIG"]["BlueLeaderProxyPort"]
-    $Config_GreenLeaderOfferPort = $FileContent["CONFIG"]["GreenLeaderOfferPort"]
-    $Config_BranchCachePortForGreenLeader = $FileContent["CONFIG"]["BranchCachePortForGreenLeader"]
-    $Config_DefaultNonRedLeaderDOPolicy = $FileContent["CONFIG"]["DefaultNonRedLeaderDOPolicy"]
-    $Config_DefaultNonRedLeaderBITSPolicy = $FileContent["CONFIG"]["DefaultNonRedLeaderBITSPolicy"]
-    $Config_DefaultDisconnectedDOPolicy = $FileContent["CONFIG"]["DefaultDisconnectedDOPolicy"]
-    $Config_DefaultDisconnectedBITSPolicy = $FileContent["CONFIG"]["DefaultDisconnectedBITSPolicy"]
+    #Config defaults from ini file
+    $filecontent["CONFIG"].GetEnumerator() | ForEach-Object {
+        Write-Debug "Setting Config_$($_.Key) to $($_.Value)"
+        Set-Variable -Name "Config_$($_.Key)" -Value $_.Value
+    }   
 
     # Read Prod and PreProd Servers if EnableSiteDetection is set to true
     If ($EnableSiteDetection -eq $true) {
-        $ProductionStifleRServers = $FileContent["CONFIG"]["ProductionStifleRServers"]
-        $ProductionStifleRulezUrl = $FileContent["CONFIG"]["ProductionStifleRulezUrl"]
-        $PreProductionStifleRServers = $FileContent["CONFIG"]["PreProductionStifleRServers"]
-        $PreProductionStifleRulezUrl = $FileContent["CONFIG"]["PreProductionStifleRServers"]
+        $EnableSiteDetectionDomain = $FileContent["CUSTOM"]["DOMAIN"]
+        Write-Debug "EnableSiteDetectionDomain is set to true and using: $EnableSiteDetectionDomain"
+        $ProductionStifleRServers = $FileContent["CUSTOM"]["ProductionStifleRServers"]
+        $ProductionStifleRulezUrl = $FileContent["CUSTOM"]["ProductionStifleRulezUrl"]
+        $PreProductionStifleRServers = $FileContent["CUSTOM"]["PreProductionStifleRServers"]
+        $PreProductionStifleRulezUrl = $FileContent["CUSTOM"]["PreProductionStifleRServers"]
 
         # ---------------------------
         # BEGIN CUSTOM SITE DETECTION
         # --------------------------- 
         $Domain = (Get-ChildItem env:USERDOMAIN).value
 
-        if ($Domain -eq "DOMAIN") {
+        if ($Domain -eq $EnableSiteDetectionDomain) {
             $Production = $true
             Write-Debug "Production variable set to true"
         }
@@ -211,42 +265,51 @@ If ($Defaults) {
             $STIFLERSERVERS = $PreProductionStifleRServers
             $STIFLERULEZURL = $PreProductionStifleRulezUrl
         }
+        
 
     }
+    try {
+        $tsenv = new-object -comobject Microsoft.SMS.TSEnvironment
+    }
+    catch {
+        Write-Debug  "Not in ConfigMgr Task Sequence"
+    }
+    if ($tsenv){
+        $StifleRInfo = Get-StifleRURLsFromTempInstallConfig
+        if($StifleRInfo)
+        {
+            $STIFLERSERVERS = $StifleRInfo.StiflerServers
+            $STIFLERULEZURL = $StifleRInfo.StifleRulezURL
+        }
+        
+    }
 
+    Write-Debug "This script logs to: $Logfile"
     Write-Debug "Installation Folder: $INSTALLFOLDER"
     Write-Debug "StifleR Server(s): $STIFLERSERVERS"
     Write-Debug "StifleR Rules URL: $STIFLERULEZURL"
     Write-Debug "StifleR Debug Level: $DEBUGLOG"
     Write-Debug "StifleR Rules download timer: $RULESTIMER"
     Write-Debug "MSI Logfile: $MSILOGFILE"
-    Write-Debug "Custom VPN Strings: $Config_VPNStrings"
-    Write-Debug "Force VPN?: $Config_ForceVPN"
-    Write-Debug "This script logs to: $Logfile"
-    Write-Debug "New features will be added: $Features"
-    Write-Debug "BranchCachePort: $Config_BranchCachePort"
-    Write-Debug "BlueLeaderProxyPort: $Config_BlueLeaderProxyPort"
-    Write-Debug "GreenLeaderOfferPort: $Config_GreenLeaderOfferPort"
-    Write-Debug "BranchCachePortForGreenLeader: $Config_BranchCachePortForGreenLeader"
-    Write-Debug "DefaultNonRedLeaderDOPolicy: $Config_DefaultNonRedLeaderDOPolicy"
-    Write-Debug "DefaultNonRedLeaderBITSPolicy: $Config_DefaultNonRedLeaderBITSPolicy"
-    Write-Debug "DefaultDisconnectedDOPolicy: $Config_DefaultDisconnectedDOPolicy"
-    Write-Debug "DefaultDisconnectedBITSPolicy: $Config_DefaultDisconnectedBITSPolicy"
+    Get-Variable -Name Config_* | ForEach-Object {
+        Write-Debug "$($_.Name): $($_.Value)"
+    }
 }
-If ($Uninstall -eq $true) { $Logfile = "C:\Windows\Temp\StifleRClient.log" }
-write-debug $Uninstall
+
 # Check for elevation (admin rights)
 if ((New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Debug "Running elevated - PASS"
 }
 else {
     Write-Warning "This script needs to be run with admin rights..."
+    $(TimeStamp) +  "This script needs to be run with admin rights..." | Out-File -FilePath $Logfile -Append -Encoding ascii
     Exit 1
 }
 
 #Check .NET Framework version is 4.6.2 or higher - if not - exit
 If ((Get-ItemProperty "HKLM:SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full").Release -ge 394802 -eq $False) {
     Write-Error "This System does not have .NET Framework 4.6.2 or higher installed. Exiting"
+    $(TimeStamp) + "This script needs to be run with admin rights..." | Out-File -FilePath $Logfile -Append -Encoding ascii
     Exit 1
 }
 
@@ -262,9 +325,6 @@ Else {
 $SName = "StifleRClient"
 $EventLogName = "StifleR"
 $StifleRConfig = "$INSTALLFOLDER\StifleR.ClientApp.exe.Config"
-$SCStartCmd = { sc.exe start $Sname }
-$SCQueryCmd = { SC.exe query $Sname }
-$SCStopCmd = { sc.exe stop $Sname }
 Write-Debug "StifleR app config file: $StifleRConfig" 
 Write-Debug "MSI installer File: $msifile"
 
@@ -298,7 +358,7 @@ Function Uninstall-App ($SearchString) {
         If ($ver.UninstallString) {                                
                                     
             $uninstallString = ([string]$ver.UninstallString).ToLower().Replace("/i", "").Replace("msiexec.exe", "")
-            $(TimeStamp) + " Uninstalling StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
+            $(TimeStamp) + "Uninstalling StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
                                     
             start-process "msiexec.exe" -arg "$uninstallString /qn" -Wait 
             Return $True
@@ -307,31 +367,34 @@ Function Uninstall-App ($SearchString) {
     }
 }
 
-function New-AppSetting
-	([string]$PathToConfig = $(throw 'Configuration file is required'),
-[string]$Key = $(throw 'No Key Specified'), 
-[string]$Value = $(throw 'No Value Specified')
-          ) {
-    if (Test-Path $PathToConfig) {	
-        $x = [xml] (Get-Content $PathToConfig)
-        $el = $x.CreateElement("add")
-        $kat = $x.CreateAttribute("key")
-        $kat.psbase.value = $Key
-        $vat = $x.CreateAttribute("value")
-        $vat.psbase.value = $Value
-        $el.SetAttributeNode($kat)
-        $el.SetAttributeNode($vat)
-        $x.configuration.appSettings.Appendchild($el)
-        $x.Save($PathToConfig)
+function New-AppSetting	
+([string]$PathToConfig = $(throw 'Configuration file is required'), [string]$Key = $(throw 'No Key Specified'), [string]$Value = $(throw 'No Value Specified')) {
+    try {
+        $xmlDoc = [xml](Get-Content $PathToConfig)
+        $newElement = $xmlDoc.CreateElement("add")
+                
+        $keyAttribute = $xmlDoc.CreateAttribute("key")
+        $keyAttribute.Value = $Key
+                
+        $valueAttribute = $xmlDoc.CreateAttribute("value")
+        $valueAttribute.Value = $Value
+                
+        $newElement.SetAttributeNode($keyAttribute)
+        $newElement.SetAttributeNode($valueAttribute)
+                
+        $xmlDoc.configuration.appSettings.AppendChild($newElement)
+        $xmlDoc.Save($PathToConfig) | Out-Null
+    }
+    catch {
+        Write-Error "Failed to update config file: $_"
     }
 }
 
 function Get-AppSetting #returns app settings from the .xml config
-
 ([string]$PathToConfig = $(throw 'Configuration file is required')) {
     if (Test-Path $PathToConfig) {
-        $x = [Xml] (Get-Content $PathToConfig)
-        $x.configuration.appSettings.add
+        $xmlDoc = [Xml](Get-Content $PathToConfig)
+        $xmlDoc.configuration.appSettings.add
     }
     else {
         throw "Configuration File $PathToConfig Not Found"
@@ -339,15 +402,14 @@ function Get-AppSetting #returns app settings from the .xml config
 }
 
 function Set-AppSetting
-
     ([string]$PathToConfig = $(throw 'Configuration file is required'),
 [string]$Key = $(throw 'No Key Specified'),
 [string]$Value = $(throw 'No Value Specified')) {
     if (Test-Path $PathToConfig) {
-        $x = [xml] (Get-Content $PathToConfig)
-        $node = $x.configuration.SelectSingleNode("appSettings/add[@key='$Key']")
+        $xmlDoc = [xml] (Get-Content $PathToConfig)
+        $node = $xmlDoc.configuration.SelectSingleNode("appSettings/add[@key='$Key']") 
         $node.value = $Value
-        $x.Save($PathToConfig)
+        $xmlDoc.Save($PathToConfig) | Out-Null
     }
 }
 
@@ -357,13 +419,13 @@ function Set-AppSetting
 If (Test-Path $Logfile) { Remove-Item $Logfile -Force -ErrorAction SilentlyContinue -Confirm:$false } 
 else { New-Item -Path $Logfile -ItemType File -Force }
 
-$(TimeStamp) + " Running on: " + $env:PROCESSOR_ARCHITECTURE | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Running on: " + $env:PROCESSOR_ARCHITECTURE | Out-File -FilePath $Logfile -Append -Encoding ascii
 Write-Debug "Running on:    $env:PROCESSOR_ARCHITECTURE"
 #-----------------------------------------------------------
 #     Check that we got a valid MSI to install - or exit
 #----------------------------------------------------------- 
 If (!(Test-Path $msiFile)) {
-    $(TimeStamp) + " No MSI file found - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "No MSI file found - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
     write-error " No MSI file found - Exiting"
     Exit 1
 }
@@ -399,7 +461,7 @@ If ($svcpath) {
     #        and wait for up to 10 mins
     #-----------------------------------------------------------
 
-    $(TimeStamp) + " Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Checking for other MSI Installs in progress"
     $LoopCounter = 0
     $MSIInProgress = $True
@@ -432,166 +494,133 @@ If ($svcpath) {
     #        Remove the StifleR Client by running the Uninstall
     #----------------------------------------------------------- 
     #First - Stop the Service as this can cause the uninstall to fail on occasion if it takes too long
-    $(TimeStamp) + " Stopping Existing Services" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Stopping Existing Services" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Stopping Existing Services"
-    #----------------------------------------------------------
-    #       Attempt to stop the StifleRClient service
-    #----------------------------------------------------------
-    #get the current svc state
-    $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
-
-    If (@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") {
-        write-debug "Service was already stopped"
-        $(TimeStamp) + " Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    
+    # Get initial service status
+    $Service = Get-Service -Name $Sname -ErrorAction SilentlyContinue
+    
+    if ($Service.Status -eq 'Stopped') {
+        Write-Debug "Service was already stopped"
+        $(TimeStamp) + "Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
-    #if not stopped - continue
-    Else {
-        Invoke-Command -ScriptBlock $SCStopCmd | Out-Null
-        $loopcounter = 0
-        do { 
-            $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
-
-            write-debug "Waiting for Service to stop: $($loopcounter * 5) Seconds Elapsed"
-            $(TimeStamp) + "Waiting for Service to stop: $($loopcounter * 5) Seconds Elapsed" | Out-File -FilePath $Logfile -Append -Encoding ascii
-            write-debug ($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString()
-            Start-Sleep -Seconds 5
-            $loopCounter++
-
-        } until ((@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") -or $loopcounter -eq 12)
-
+    else {
+        $null = Stop-ServiceWithTimeout -name $Sname -timeoutSeconds 60
+     
         if ($StifleRClientTempInstallation) {
-            # if the client is installed under c:\Windows\Temp there will be no eventlog so waiting some extra time to make sure.
-            $(TimeStamp) + " Client is installed under c:\Windows\Temp there will be no eventlog so waiting some extra time to make sure." | Out-File -FilePath $Logfile -Append -Encoding ascii
+            $(TimeStamp) + "Client is installed under c:\Windows\Temp there will be no eventlog so waiting some extra time to make sure." | Out-File -FilePath $Logfile -Append -Encoding ascii
             Start-Sleep -Seconds 15
         }
         else {
-            If (@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") {
-                #if the service stopped - check the StifleR event log for Service Shutdown Event
-
-            
+            $Service = Get-Service -Name $Sname -ErrorAction SilentlyContinue
+            if ($Service.Status -eq 'Stopped') {
                 $loopcounter = 0
-                $TSpan = (Get-Date) - (New-TimeSpan -Second 20)
-
-
-                If (($vermajor -eq 2) -and ($verminor -ge 7)) {
+                $TSpan = (Get-Date).AddSeconds(-20).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
+    
+                # Keep existing event log query logic
+                if (($vermajor -eq 2) -and ($verminor -ge 7)) {
                     $query = @"
 <QueryList>
- <Query Id="0" Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
-   <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">*[System[(EventID=295)]]</Select>
- </Query>
+    <Query Id="0" Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
+        <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
+            *[System[(EventID=295) and TimeCreated[@SystemTime&gt;='$TSpan']]]
+        </Select>
+    </Query>
 </QueryList>
 "@
                 }
                 else {
                     $query = @"
 <QueryList>
- <Query Id="0" Path="StifleR">
-   <Select Path="StifleR">*[System[(EventID=0)]] and *[EventData[Data='Service Shutdown Completed.']]</Select>
- </Query>
+    <Query Id="0" Path="StifleR">
+        <Select Path="StifleR">
+            *[System[(EventID=0) and TimeCreated[@SystemTime&gt;='$TSpan']]] and 
+            *[EventData[Data='Service Shutdown Completed.']]
+        </Select>
+    </Query>
 </QueryList>
 "@
                 }
-
-
-                do { 
-
-                    $evt = Get-WinEvent -FilterXml $query | Select-Object -First 1 | Where-Object { $_.TimeCreated -ge $TSpan }
-
-                    write-debug "Waiting for shutdown event: $loopcounter"
+                
+                do {
+                    $evt = Get-WinEvent -FilterXml $query -ErrorAction SilentlyContinue | Select-Object -First 1
+                    Write-Debug "Waiting for shutdown event: $loopcounter"
                     Start-Sleep -Seconds 2
                     $loopCounter++
-
                 } until (($evt) -or $loopcounter -eq 15)
-                If (!$evt) {
+    
+                if (!$evt) {
                     Write-Error "StifleR Service Stop Timed out - Continue to second check"
                     $(TimeStamp) + "StifleR Service Stop Timed out - Continue to second check" | Out-File -FilePath $Logfile -Append -Encoding ascii
-                    # Exit 1
+                }
+                else {
+                    Write-Debug "Shutdown Event detected - safe to continue"
+                    $(TimeStamp) + "Shutdown Event detected - safe to continue" | Out-File -FilePath $Logfile -Append -Encoding ascii
                 }
             }
-            Else {
+            else {
                 Write-Error "StifleR Service Stop Timed out - Continue to second check"
                 $(TimeStamp) + "StifleR Service Stop Timed out - Continue to second check" | Out-File -FilePath $Logfile -Append -Encoding ascii
-                #Exit 1
             }
-            write-debug "Shutdown Event detected - safe to continue"
-            $(TimeStamp) + "Shutdown Event detected - safe to continue" | Out-File -FilePath $Logfile -Append -Encoding ascii
         }
     }
-
+    
     # Second check - Stop the service
-    $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
-    $State = $SvcStatus | Select-String "STATE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 }
-    $(TimeStamp) + "The current state of the service is: $State"
-    If ($State -eq "STOPPED") {
+    $Service = Get-Service -Name $Sname
+    Write-Debug "The current state of the service is: $($Service.Status)"
+    $(TimeStamp) + "The current state of the service is: $($Service.Status)" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    
+    if ($Service.Status -eq 'Stopped') {
+        Write-Debug "Service is already stopped, continue to next section."
         $(TimeStamp) + "Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
-    Else {
+    else {
+        Write-Debug "Service is running, trying to stop it."
         $(TimeStamp) + "Service is running, trying to stop it." | Out-File -FilePath $Logfile -Append -Encoding ascii
-        Invoke-Command -ScriptBlock $SCStopCmd | Out-Null
-        $loopCounter = 0
-        do { 
-            $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
-            $State = $SvcStatus | Select-String "STATE" | ForEach-Object { ($_ -replace '\s+', ' ').trim().Split(" ") | Select-Object -Last 1 }
-            Start-Sleep -Seconds 5
-            $loopCounter++
-            $(TimeStamp) + "Waiting for Service to stop: $($loopcounter * 5) Seconds Elapsed" | Out-File -FilePath $Logfile -Append -Encoding ascii
-
-        } until (($State -eq "STOPPED") -or $loopcounter -eq 12)
-    
-        # Service should be stopped now, kill the process if its not
-        If ($State -eq "STOPPED") {
-            $(TimeStamp) + "Second Check: Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
-        }
-        Else {
-            $(TimeStamp) + "Service could not be stopped, stop the process." | Out-File -FilePath $Logfile -Append -Encoding ascii
-            Get-Process StifleR.ClientApp | Stop-Process -Force
-        }
+        $null = Stop-ServiceWithTimeout -name $Sname -timeoutSeconds 60 -Force
     }
-
-    # Final Check: Service should be stopped now, abort the script if its not
-    If ($State -eq "STOPPED") {
+    
+    # Final Check
+    $Service = Get-Service -Name $Sname
+    if ($Service.Status -eq 'Stopped') {
+        Write-Debug "Final Check: Service is already stopped, continue to next section."
         $(TimeStamp) + "Final Check: Service is already stopped, continue to next section." | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
-    Else {
+    else {
+        Write-Debug "Service could not be stopped, aborting script." 
         $(TimeStamp) + "Service could not be stopped, aborting script." | Out-File -FilePath $Logfile -Append -Encoding ascii
-        Break
+        exit 1
     }
-
-
-
 
     #-------------------------------------------
     #   END - Service shutdown
     #-------------------------------------------
 
-
-
-
 }
 Else {
     Write-Debug "StifleR Service not found, possible new install"
-    $(TimeStamp) + " StifleR Service not found, possible new install" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "StifleR Service not found, possible new install" | Out-File -FilePath $Logfile -Append -Encoding ascii
 }
 
 #-------------------------------------------
 #DETECT EXISTING INSTALL(s) AND REMOVE
 #-------------------------------------------
-$(TimeStamp) + " Checking for existing Installation" | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Checking for existing Installation" | Out-File -FilePath $Logfile -Append -Encoding ascii
 
 
 If ((Uninstall-App "StifleR Client") -eq $True) {
-    $(TimeStamp) + " Successfully removed old version" | Out-File -FilePath $Logfile -Append -Encoding ascii;
+    $(TimeStamp) + "Successfully removed old version" | Out-File -FilePath $Logfile -Append -Encoding ascii;
     Write-Debug "Successfully removed old version" 
 
     #-------------------------------------------
     #Remove the Logs and Client data folders
     #-------------------------------------------
 
-    $(TimeStamp) + " Removing Logs folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Removing Logs folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Removing Logs folders"
     If (Test-Path $DebugLogPath) { Remove-Item $DebugLogPath -Recurse -Force -ErrorAction SilentlyContinue -Confirm:$false }
 
-    $(TimeStamp) + " Removing Client Data folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "Removing Client Data folders" | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Debug "Removing Client Data folders"
     If (Test-Path $DataPath) { Remove-Item $DataPath -Recurse -Force -ErrorAction SilentlyContinue -Confirm:$false }
     #-------------------------------------------
@@ -599,14 +628,14 @@ If ((Uninstall-App "StifleR Client") -eq $True) {
     #-------------------------------------------
     If ($IsStifleRServer = "False") {
 
-        $(TimeStamp) + " Removing old event log" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        $(TimeStamp) + "Removing old event log" | Out-File -FilePath $Logfile -Append -Encoding ascii
         Write-Debug "Removing the old Event log"
         $log = try {
             Get-WinEvent -Log $EventLogName -ErrorAction Stop
         }
         catch [Exception] {
             if ($_.Exception -match "There is not an event log") {
-                $(TimeStamp) + " No event log found to remove" | Out-File -FilePath $Logfile -Append -Encoding ascii;
+                $(TimeStamp) + "No event log found to remove" | Out-File -FilePath $Logfile -Append -Encoding ascii;
                 Write-Debug " No event log found to remove"
             }
         }
@@ -630,7 +659,7 @@ If ((Uninstall-App "StifleR Client") -eq $True) {
 
 }
 Else {
-    $(TimeStamp) + " Failed to remove old version - or it wasn't installed" | Out-File -FilePath $Logfile -Append -Encoding ascii;
+    $(TimeStamp) + "Failed to remove old version - or it wasn't installed" | Out-File -FilePath $Logfile -Append -Encoding ascii;
     Write-Debug " Failed to remove old version - or it wasn't installed?"
     If ($Uninstall -eq $true) {
         Write-Debug "Uninstall Complete - exiting"
@@ -640,7 +669,7 @@ Else {
 }
 
 
-$(TimeStamp) + " Installing New Version" | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Installing New Version" | Out-File -FilePath $Logfile -Append -Encoding ascii
 Write-Debug "Installing New Version"
 
 #-----------------------------------------------------------
@@ -664,7 +693,7 @@ If (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient"-ErrorActio
 #        and wait for up to 10 mins
 #-----------------------------------------------------------
 
-$(TimeStamp) + " Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
+$(TimeStamp) + "Checking for other MSI Installs in progress" | Out-File -FilePath $Logfile -Append -Encoding ascii
 Write-Debug "Checking for other MSI Installs in progress"
 $LoopCounter = 0
 $MSIInProgress = $True
@@ -751,13 +780,13 @@ If (@(0, 3010) -contains $return.exitcode) {
     Select-Object -Property DisplayName, UninstallString, Displayversion
 
     ForEach ($ver in $StifCli) {                  
-        $(TimeStamp) + " Installed StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
+        $(TimeStamp) + "Installed StifleR Client Version:" + $ver.Displayversion | Out-File -FilePath $Logfile -Append -Encoding ascii
         Write-Debug "Installed StifleR Client Version: $($ver.Displayversion)"
     }
 }# END MSI Install
 
 else {
-    $(TimeStamp) + " MSI failed with Error" + $return.exitcode | Out-File -FilePath $Logfile -Append -Encoding ascii
+    $(TimeStamp) + "MSI failed with Error" + $return.exitcode | Out-File -FilePath $Logfile -Append -Encoding ascii
     Write-Error "MSI install failed with Error  $($return.exitcode) "
     Exit 1
 }
@@ -776,79 +805,79 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
     #       Attempt to stop the StifleRClient service
     #----------------------------------------------------------
     #get the current svc state
-    $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
+    $Service = Get-Service -Name $Sname -ErrorAction SilentlyContinue
 
-    If (@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") {
-        write-debug "Service was already stopped"
-        $(TimeStamp) + " Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    if ($Service.Status -eq 'Stopped') {
+        Write-Debug "Service was already stopped"
+        $(TimeStamp) + "Service was already stopped" | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
-    #if not stopped - continue
-    Else {
-        Invoke-Command -ScriptBlock $SCStopCmd | Out-Null
+    else {
+        Stop-Service -Name $Sname -Force -ErrorAction SilentlyContinue
         $loopcounter = 0
         do { 
-            $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
-
-            write-debug "Waiting for Service to stop: $($loopcounter * 5) Seconds Elapsed"
+            $Service = Get-Service -Name $Sname
+            Write-Debug "Waiting for Service to stop: $($loopcounter * 5) Seconds Elapsed"
             $(TimeStamp) + "Waiting for Service to stop: $($loopcounter * 5) Seconds Elapsed" | Out-File -FilePath $Logfile -Append -Encoding ascii
-            write-debug ($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString()
+            Write-Debug "Service Status: $($Service.Status)"
             Start-Sleep -Seconds 5
             $loopCounter++
-
-        } until ((@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") -or $loopcounter -eq 12)
-
-
-        If (@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "STOPPED") {
-            #if the service stopped - check the StifleR event log for Service Shutdown Event
+        } until ($Service.Status -eq 'Stopped' -or $loopcounter -eq 12)
+    
+        if ($Service.Status -eq 'Stopped') {
             $loopcounter = 0
-            $TSpan = (Get-Date) - (New-TimeSpan -Second 20)
-            If (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient"-ErrorAction SilentlyContinue) {
-                $VerMajor = (Get-Command 'C:\Program Files\2Pint Software\StifleR Client\stifler.clientapp.exe' ).FileVersionInfo.FileMajorPart
-                $VerMinor = (Get-Command 'C:\Program Files\2Pint Software\StifleR Client\stifler.clientapp.exe' ).FileVersionInfo.FileMinorPart
+            $TSpan = (Get-Date).AddSeconds(-20).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
+            
+            if (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\StifleRClient" -ErrorAction SilentlyContinue) {
+                $VerMajor = (Get-Command 'C:\Program Files\2Pint Software\StifleR Client\stifler.clientapp.exe').FileVersionInfo.FileMajorPart
+                $VerMinor = (Get-Command 'C:\Program Files\2Pint Software\StifleR Client\stifler.clientapp.exe').FileVersionInfo.FileMinorPart
             }
-
-            If (($vermajor -eq 2) -and ($verminor -ge 7)) {
+    
+            if (($vermajor -eq 2) -and ($verminor -ge 7)) {
                 $query = @"
 <QueryList>
- <Query Id="0" Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
-   <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">*[System[(EventID=295)]]</Select>
- </Query>
+    <Query Id="0" Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
+        <Select Path="TwoPintSoftware-StifleR.ClientApp-Program/Operational">
+            *[System[(EventID=295) and TimeCreated[@SystemTime&gt;='$TSpan']]]
+        </Select>
+    </Query>
 </QueryList>
 "@
             }
             else {
                 $query = @"
 <QueryList>
- <Query Id="0" Path="StifleR">
-   <Select Path="StifleR">*[System[(EventID=0)]] and *[EventData[Data='Service Shutdown Completed.']]</Select>
- </Query>
+    <Query Id="0" Path="StifleR">
+        <Select Path="StifleR">
+            *[System[(EventID=0) and TimeCreated[@SystemTime&gt;='$TSpan']]] and 
+            *[EventData[Data='Service Shutdown Completed.']]
+        </Select>
+    </Query>
 </QueryList>
 "@
             }
-
-
-            do { 
-
-                $evt = Get-WinEvent -FilterXml $query | Select-Object -First 1 | Where-Object { $_.TimeCreated -ge $TSpan }
-
-                write-debug "Waiting for shutdown event: $loopcounter"
+            
+            do {
+                $evt = Get-WinEvent -FilterXml $query -ErrorAction SilentlyContinue | Select-Object -First 1
+                Write-Debug "Waiting for shutdown event: $loopcounter"
                 Start-Sleep -Seconds 2
                 $loopCounter++
-
             } until (($evt) -or $loopcounter -eq 15)
-            If (!$evt) {
+    
+            if (!$evt) {
                 Write-Error "StifleR Service Stop Timed out - Exiting"
                 $(TimeStamp) + "StifleR Service Stop Timed out - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
                 Exit 1
             }
+            else {
+                Write-Debug "Shutdown Event detected - safe to continue"
+                $(TimeStamp) + "Shutdown Event detected - safe to continue" | Out-File -FilePath $Logfile -Append -Encoding ascii
+            }
         }
-        Else {
+        else {
             Write-Error "StifleR Service Stop Timed out - Exiting"
             $(TimeStamp) + "StifleR Service Stop Timed out - Exiting" | Out-File -FilePath $Logfile -Append -Encoding ascii
             Exit 1
         }
-        write-debug "Shutdown Event detected - safe to continue"
-        $(TimeStamp) + "Shutdown Event detected - safe to continue" | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
     #-------------------------------------------
     #   END - Service shutdown
@@ -872,25 +901,15 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
         $error.clear()
         #Edits the Stifler App.Config XML
 
-        #enable Beta features if that switch is $true
-        If ($EnableBetaFeatures -eq $true) {
-            Write-Debug "Enabling Beta features: $Features"
-            $(TimeStamp) + "Enabling beta features in the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
-            $key = "Features"
-            $v = (Get-Appsetting $StifleRConfig | Where-Object { $_.key -eq $key }).value #return the current value of features
-            $a = $v + "," + $Features
-            Set-AppSetting $StifleRConfig $key $a
-        }
-
         Foreach ($configItem in Get-Variable -Name "Config_*") {
             If ($configItem.Value) { 
                 if ((Get-Appsetting $StifleRConfig | Where-Object { $_.key -eq $(($configItem.Name -split "_")[1]) }).key) {
-                    Set-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)"    
+                    Set-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)" | Out-Null   
                     Write-Debug "Setting custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config"
                     $(TimeStamp) + "Setting custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
                 }
                 else {
-                    New-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)"    
+                    New-AppSetting $StifleRConfig "$(($configItem.Name -split "_")[1])" "$($configItem.Value)" | Out-Null      
                     Write-Debug "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config"
                     $(TimeStamp) + "Adding custom $(($configItem.Name -split "_")[1]) = $($configItem.Value) to the app config:" | Out-File -FilePath $Logfile -Append -Encoding ascii
                 }
@@ -933,86 +952,85 @@ If (((Get-Variable -Name "Config_*").Value) -or ($EnableBetaFeatures -eq $true) 
     #       Attempt to start the StifleRClient service
     #----------------------------------------------------------
     $(TimeStamp) + "Service Startup" | Out-File -FilePath $Logfile -Append -Encoding ascii
-    $SCQueryCmd = { SC.exe query $Sname }
 
-    $SCStartCmd = { sc.exe start $Sname }
-
-    $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
-    If (@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "RUNNING") {
+    # Get initial service status
+    $Service = Get-Service -Name $Sname -ErrorAction SilentlyContinue
+    
+    if ($Service.Status -eq 'Running') {
         $(TimeStamp) + "Service was already started" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        write-debug "Service was already started"
-        Exit 0 
+        Write-Debug "Service was already started"
+        Exit 0
     }
-    Else { Invoke-Command -ScriptBlock $SCStartCmd  | Out-File -FilePath $Logfile -Append -Encoding ascii }
-
+    else {
+        Start-Service -Name $Sname -ErrorAction SilentlyContinue | Out-File -FilePath $Logfile -Append -Encoding ascii
+    }
+    
+    # Wait for service to start
     $loopcounter = 0
-    do { 
-        $SvcStatus = Invoke-Command -ScriptBlock $SCQueryCmd
-        write-debug "Waiting for Service to start:  $($loopcounter * 2) Seconds Elapsed"
-        $(TimeStamp) + "Waiting for Service to start:  $($loopcounter * 2) Seconds Elapsed" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        write-debug ($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString()
+    do {
+        $Service = Get-Service -Name $Sname
+        Write-Debug "Waiting for Service to start: $($loopcounter * 2) Seconds Elapsed"
+        $(TimeStamp) + "Waiting for Service to start: $($loopcounter * 2) Seconds Elapsed" | Out-File -FilePath $Logfile -Append -Encoding ascii
+        Write-Debug "Service Status: $($Service.Status)"
         Start-Sleep -Seconds 2
-        $loopCounter++
-
-    } until ((@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "RUNNING") -or $loopcounter -eq 15)
-
-
-    If (@($SvcStatus | Select-String -SimpleMatch -Pattern "STATE")[0].ToString() -match "RUNNING") {
-        #if the service startedd - we are good to go
-        write-debug "StifleR Client service started - Install Completed"
+        $loopcounter++
+    } until ($Service.Status -eq 'Running' -or $loopcounter -eq 15)
+    
+    if ($Service.Status -eq 'Running') {
+        Write-Debug "StifleR Client service started - Install Completed"
         $(TimeStamp) + "StifleR Client service started - Install Completed" | Out-File -FilePath $Logfile -Append -Encoding ascii
     }
-    Else {
-        write-warning "StifleR Service Start Timed out - Retry"
+    else {
+        Write-Warning "StifleR Service Start Timed out - Retry"
         $(TimeStamp) + "StifleR Service Start Timed out - Retry" | Out-File -FilePath $Logfile -Append -Encoding ascii
-
-        $SvcStatus = Invoke-Command -ScriptBlock $SCStartCmd
-        #try to start the service and if we get an error we will look at the .config XML
-        If ($SvcStatus | Select-String -SimpleMatch -Pattern "StartService FAILED") {
-
+    
+        try {
+            Start-Service -Name $Sname -ErrorAction Stop
+        }
+        catch {
             try {
-                #try to load the XML and if it throws an error we will assume it's corrupt
+                # Try to load the XML and if it throws an error we will assume it's corrupt
                 $xml = $null
                 $StiflerConfigItems = 0
                 $xml = [xml](Get-Content $StifleRConfig -ErrorAction SilentlyContinue)
-                $StiflerConfigItems = ($xml.Configuration.appsettings.add ).count
-                write-debug "Number of config items in the App Config is:$StiflerConfigItems"
+                $StiflerConfigItems = ($xml.Configuration.appsettings.add).count
+                Write-Debug "Number of config items in the App Config is:$StiflerConfigItems"
                 $(TimeStamp) + "Number of config items in the App Config is:$StiflerConfigItems" | Out-File -FilePath $Logfile -Append -Encoding ascii
-            }# try end
-
+            }
             catch {
-                #Restore the .config in case it was corrupted
-                write-warning "Number of config items in the App Config is:$StiflerConfigItems"
-                $(TimeStamp) + "Number of config items in the App Config is:$StiflerConfigItems" | Out-File -FilePath $Logfile -Append -Encoding ascii 
-                write-warning "Looks like the config XML is corrupt - restoring"
+                # Restore the .config in case it was corrupted
+                Write-Warning "Number of config items in the App Config is:$StiflerConfigItems"
+                $(TimeStamp) + "Number of config items in the App Config is:$StiflerConfigItems" | Out-File -FilePath $Logfile -Append -Encoding ascii
+                Write-Warning "Looks like the config XML is corrupt - restoring"
                 $(TimeStamp) + "Looks like the config XML is corrupt - restoring" | Out-File -FilePath $Logfile -Append -Encoding ascii
-                If (Test-Path C:\Windows\temp\StifleRConfigdata.bak) { copy-item C:\Windows\temp\StifleRConfigdata.bak $svcpath\StifleR.ClientApp.exe.Config -Force }
+                
+                if (Test-Path C:\Windows\temp\StifleRConfigdata.bak) {
+                    Copy-Item C:\Windows\temp\StifleRConfigdata.bak $svcpath\StifleR.ClientApp.exe.Config -Force
+                }
+                
                 $xml = $null
                 $StiflerConfigItems = 0
                 $xml = [xml](Get-Content $StifleRConfig -ErrorAction SilentlyContinue)
-                $StiflerConfigItems = ($xml.Configuration.appsettings.add ).count
-                write-debug "Number of config items in the App Config is now:$StiflerConfigItems"
+                $StiflerConfigItems = ($xml.Configuration.appsettings.add).count
+                Write-Debug "Number of config items in the App Config is now:$StiflerConfigItems"
                 $(TimeStamp) + "Number of config items in the App Config is now:$StiflerConfigItems" | Out-File -FilePath $Logfile -Append -Encoding ascii
-                write-debug "Will attempt to start the service again"
+                Write-Debug "Will attempt to start the service again"
                 $(TimeStamp) + "Will attempt to start the service again" | Out-File -FilePath $Logfile -Append -Encoding ascii
-                #If the config looks ok now we should try to start the svc again
-                If ($StiflerConfigItems -ge 35) {
-                    # DOn't restart for now - early testing                                $SvcStatus = Invoke-Command -ScriptBlock $SCStartCmd
+                
+                if ($StiflerConfigItems -ge 35) {
+                    # Don't restart for now - early testing
+                    # Start-Service -Name $Sname -ErrorAction SilentlyContinue
                 }
-
-            } #catch end
-
-        } 
-
-        write-warning "Exiting with an error as the .config edit failed"
+            }
+        }
+    
+        Write-Warning "Exiting with an error as the .config edit failed"
         $(TimeStamp) + "Exiting with an error as the .config edit failed" | Out-File -FilePath $Logfile -Append -Encoding ascii
-        write-debug "Service status is: $SvcStatus"
-        $(TimeStamp) + "Service status is: $SvcStatus" | Out-File -FilePath $Logfile -Append -Encoding ascii
- 
-
+        Write-Debug "Service status is: $($Service.Status)"
+        $(TimeStamp) + "Service status is: $($Service.Status)" | Out-File -FilePath $Logfile -Append -Encoding ascii
+    
         Exit 1
     }
-
 }
 #--------------------------------
 #Install Stifler ETW - REMOVED as client installs ETW by default
