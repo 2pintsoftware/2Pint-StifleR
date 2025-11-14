@@ -42,7 +42,7 @@ msiexec /i StifleR-ClientApp-x64.msi AUTOSTART=1 OPTIONS="%~dp0settings.2psImpor
 
 The source folder for the StifleR Client installer in ConfigMgr will contain the client MSI, the client settings file, and install.cmd file with the install string. For DeployR, just the MSI & Settings file.
 
-![2Pint Config Editor](media/SourceContentFolder.png)
+![Source Content](media/SourceContentFolder.png)
 
 ## Finishing Up
 
