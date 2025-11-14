@@ -1,0 +1,1 @@
+msiexec /i StifleR-ClientApp-x64.msi AUTOSTART=1 OPTIONS="%~dp0settings.2psImport" /quiet /l*v "C:\Windows\Temp\StifleRClientInstall.log"
