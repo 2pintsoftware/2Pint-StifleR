@@ -14,22 +14,33 @@ Once the editor is open, customize the settings for the environment then go to E
 
 ## Install Commands
 
-Based on your deployment method, the install strings are slightly different.
+Based on your deployment method, the install strings are slightly different.  Some systems don't automatically assume the additional files called in the command line string are in the same folder as the installer.  Many do, but that's why there are a few install strings here:
+
+### Command Line
+
+``` TXT
+msiexec /i StifleR-ClientApp-x64.msi AUTOSTART=1 OPTIONS="settings.2psImport" /quiet /l*v "C:\Windows\Temp\StifleRClientInstall.log"
+```
 
 ### DeployR Application
 
-```
+Enter this into the Command Line in the DeployR Application
+
+``` TXT
 msiexec /i StifleR-ClientApp-x64.msi AUTOSTART=1 OPTIONS="%WorkingDir%\settings.2psImport" /quiet /l*v "C:\Windows\Temp\StifleRClientInstall.log"
 ```
+
 ### ConfigMgr Application
 
-```
+Use this to create the install.cmd file which will be your install command for the App Deployment Type or Package/Program
+
+``` TXT
 msiexec /i StifleR-ClientApp-x64.msi AUTOSTART=1 OPTIONS="%~dp0settings.2psImport" /quiet /l*v "C:\Windows\Temp\StifleRClientInstall.log"
 ```
 
 ## Source Folder
 
-The source folder for the StifleR Client installer will contain the client MSI, the client settings file, and install.cmd file with the install string.
+The source folder for the StifleR Client installer in ConfigMgr will contain the client MSI, the client settings file, and install.cmd file with the install string. For DeployR, just the MSI & Settings file.
 
 ![2Pint Config Editor](media/SourceContentFolder.png)
 
