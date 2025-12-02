@@ -107,5 +107,5 @@ Foreach ($NG in $NetworkGroups) {
     }
 }
 
-#$PeerNetworkInfo | Export-Csv -Path $ExportPath -NoTypeInformation
+$PeerNetworkInfo | Export-Csv -Path $ExportPath -NoTypeInformation
 
