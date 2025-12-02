@@ -25,6 +25,7 @@ $NetworkGroups = Get-WmiObject -Namespace root\stifler -query "Select NetworksId
 [System.Collections.ArrayList]$PeerNetworkInfo = @()
 Foreach ($NG in $NetworkGroups) {
 
+    $NGName = Get-CimInstance -ClassName "NetworkGroups" -Namespace root\stifler -Filter "Id = '$($NG.id)'" | Select-Object -ExpandProperty Name
     $NetworkIds = @()
     $MaxClients = @()
     $BITSSourceHistory = @()
@@ -86,7 +87,8 @@ Foreach ($NG in $NetworkGroups) {
 
         $obj = [PSCustomObject]@{
             # Add values to arraylist
-            NetWorkGroupID            = $NG.id
+            NetworkGroupID            = $NG.id
+            NetworkGroupName          = $NGName
             NetworkIds                = $NetworkIds -join "|"
             DataCollectDate           = $DateForCSVTimeStamp
             MaxClients                = $MaxClients | Measure-Object -Sum | Select-Object -ExpandProperty Sum
@@ -105,5 +107,5 @@ Foreach ($NG in $NetworkGroups) {
     }
 }
 
-$PeerNetworkInfo | Export-Csv -Path $ExportPath -NoTypeInformation
+#$PeerNetworkInfo | Export-Csv -Path $ExportPath -NoTypeInformation
 
