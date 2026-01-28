@@ -2,7 +2,7 @@
 # Script to add a Beacon Server to one or more network groups
 # Note, this is not a script that is meant to be run in full, but rather as a set of code snippets to be used as needed 
 
-# List all Beacon Servers - Run first to get the Id of the Beacon you want to add, then update line 9 below
+# List all Beacon Servers - Run first to get the Id of the Beacon you want to add, then update line 10 below
 $BeaconServers = Get-CimInstance -Namespace root\stifler -ClassName InfrastructureServices -Filter "Type = 'Beacon'"
 $BeaconServers | Select Hostname, Id
 
