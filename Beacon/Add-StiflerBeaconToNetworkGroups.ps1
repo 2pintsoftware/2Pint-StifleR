@@ -7,7 +7,7 @@ $BeaconServers = Get-CimInstance -Namespace root\stifler -ClassName Infrastructu
 $BeaconServers | Select Hostname, Id
 
 # Set Beacon Server to add
-$BeaconServerId = "99e0e965-9bac-457f-b030-1fc215c248bc"
+$BeaconServerId = "81072007-c468-4e13-8dcd-e967284fc786"
 
 
 #region Add Beacon to a specific Network Group
