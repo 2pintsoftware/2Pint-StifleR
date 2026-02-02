@@ -120,3 +120,4 @@ Compress-Archive -Path "$temppath\*.*" $filepath -CompressionLevel Optimal
 Remove-Item $temppath -Recurse -Force
 
 Invoke-Expression "explorer '/select,""$filePath""'"
+Write-Host "Log export completed.  File created at: $filepath" -ForegroundColor Green
