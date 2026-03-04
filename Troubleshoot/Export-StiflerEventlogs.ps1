@@ -10,10 +10,11 @@
   In the format StiflerLogs_yyyyMMddHHmm.zip
 
 .NOTES
-  Version:        1.0
+  Version:        1.1
   Author:         support@2pintsoftware.com
   Creation Date:  2023-10-18
   Purpose/Change: Initial script development
+    - 2026-03-04: Updated to dynamically discover logs based on search pattern.
 
 #>
 #Requires -RunAsAdministrator
