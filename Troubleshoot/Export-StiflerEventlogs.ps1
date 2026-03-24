@@ -21,32 +21,44 @@
 #region --------------------------------------------------[Script Parameters]------------------------------------------------------
 Param (
   [string]$outpath = "C:\Windows\Temp",
-  [string]$LogSearch = "TwoPintSoftware-*"
+  [string[]]$LogSearch = @("TwoPintSoftware-*", "StifleRBlueGreenLeader"),
+  [switch]$ExtendedLogs
 )
 
 #endregion
-#region --------------------------------------------------[Initialisations]--------------------------------------------------------
-
-#Set Error Action to Silently Continue
-#$ErrorActionPreference = 'SilentlyContinue'
-
-#Import Modules & Snap-ins
-#endregion
-
 #region ---------------------------------------------------[Functions]------------------------------------------------------------
 
-
+$AdditionalLogs = @(
+  "Microsoft-Windows-Bits-Client/Operational",
+  "Microsoft-Windows-BranchCache/Operational"
+)
 
 $tempGuid = [guid]::NewGuid()
 $temppath = (new-item "$outpath\$tempGuid" -ItemType Directory -Force).FullName
 
 #Dynamically discover all event logs matching the search pattern.
-$logfiles = (Get-WinEvent -ListLog $LogSearch -Force -ErrorAction SilentlyContinue).LogName
+$logfiles = @()
+Foreach ($search in $LogSearch) {
+  $logfiles += (Get-WinEvent -ListLog $search -Force -ErrorAction SilentlyContinue).LogName
+}
 
+if ($ExtendedLogs) {
+  foreach ($log in $AdditionalLogs) {
+    if (Get-WinEvent -ListLog $log -Force -ErrorAction SilentlyContinue) {
+      $logfiles += $log
+    }
+  }
+}
 
 # Export logs
 foreach ($logfile in $logfiles) {
-  $outname = ($logfile -split "-", 2)[1] -replace "/", "_"
+  if ($logfile -like "*/*") {
+    $outname = ($logfile -split "-", 2)[1] -replace "/", "_"
+  }
+  else {
+    $outname = $logfile
+  }
+  
   try {
     . wevtutil epl $logfile "$temppath\$outname.evtx" 2>&1 | Out-Null
   }
