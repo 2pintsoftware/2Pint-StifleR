@@ -41,7 +41,7 @@ $tempGuid = [guid]::NewGuid()
 $temppath = (new-item "$outpath\$tempGuid" -ItemType Directory -Force).FullName
 
 #Dynamically discover all event logs matching the search pattern.
-$logfiles = (Get-WinEvent -ListLog $LogSearch -ErrorAction SilentlyContinue).LogName
+$logfiles = (Get-WinEvent -ListLog $LogSearch -Force -ErrorAction SilentlyContinue).LogName
 
 
 # Export logs
