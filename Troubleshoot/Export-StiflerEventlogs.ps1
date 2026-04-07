@@ -29,6 +29,7 @@ Param (
 #region ---------------------------------------------------[Functions]------------------------------------------------------------
 
 $AdditionalLogs = @(
+  "Application",
   "Microsoft-Windows-Bits-Client/Operational",
   "Microsoft-Windows-BranchCache/Operational"
 )
