@@ -7,8 +7,8 @@
 
 .NOTES
   Version:        1.0
-  Author:         <Name>
-  Creation Date:  <Date>
+  Author:         2Pint Team
+  Creation Date:  Awhile ago, I don't recall
   Purpose/Change: Initial script development
 
 .EXAMPLE
