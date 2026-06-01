@@ -1,18 +1,9 @@
 <#
 .SYNOPSIS
-  Test
+  This Script will allow you to import networks into StifleR from a .csv file of specific layout (see the sample csv file)
 
-.DESCRIPTION
-  <Brief description of script>
-
-.PARAMETER <Parameter_Name>
-  <Brief description of parameter input required. Repeat this attribute if required>
-
-.INPUTS
-  <Inputs if any, otherwise state None>
-
-.OUTPUTS
-  <Outputs if any, otherwise state None>
+.PARAMETER CSVPath
+  Path to the CSV File with network information.  Look at the example CSV file in this same GitHub folder as an example
 
 .NOTES
   Version:        1.0
