@@ -12,9 +12,8 @@
   Purpose/Change: Initial script development
 
 .EXAMPLE
-  <Example explanation goes here>
-  
-  <Example goes here. Repeat this attribute for more than one example>
+  Update the CSV Path then run the script.
+
 #>
 #Requires -RunAsAdministrator
 #region --------------------------------------------------[Script Parameters]------------------------------------------------------
