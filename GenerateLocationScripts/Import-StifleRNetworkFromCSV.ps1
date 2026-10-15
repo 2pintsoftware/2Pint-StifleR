@@ -6,10 +6,13 @@
   Path to the CSV File with network information.  Look at the example CSV file in this same GitHub folder as an example
 
 .NOTES
-  Version:        1.0
+  Version:        1.1
   Author:         2Pint Team
   Creation Date:  Awhile ago, I don't recall
-  Purpose/Change: Initial script development
+  Last Update:    2026-10-14
+  Purpose/Change: 
+    1.0 - Initial Release
+    1.1 - Added support for areas
 
 .EXAMPLE
   Update the CSV Path then run the script.
@@ -29,15 +32,16 @@ Param (
 #region --------------------------------------------------[Initialisations]--------------------------------------------------------
 
 #Set Error Action to Silently Continue
+#Inadvisable... let the red guide you young padawan
 #$ErrorActionPreference = 'SilentlyContinue'
 
-#Import Modules & Snap-ins
 #endregion
 #region ---------------------------------------------------[Declarations]----------------------------------------------------------
 
 #Any Global Declarations go here
-$maxlogfilesize = 5Mb
-$Verbose = $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
+$maxlogfilesize =  5Mb
+$Verbose =         $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent
+#$defaultTemplate = '00000000-0000-0000-0000-000000000012' # Network group template to use in absence of a value from the CSV file, not currently used
 
 #endregion
 #region ---------------------------------------------------[Functions]------------------------------------------------------------
@@ -141,6 +145,31 @@ function Compare-StifleRMethodParameters($WMIClass, $Method, $CALLINGParams) {
 }
 
 
+function Add-Area($AreaName, $AreaDescription) {
+    $class = "Areas"
+    $method = "AddArea"
+    if ($verbose) { Write-Log -message "Processing $method" }
+    $params = @{ Name = $AreaName; Description = $AreaDescription };
+
+    $result = Compare-StifleRMethodParameters $class $method $params
+
+    if ($result -ne 0) {
+        Write-Error "Failed to verify Parameters to $class"
+        return 1
+    }
+    else {
+        #Add our area
+        if ($verbose) { Write-Log -message "Calling Invoke-CimMethod to $class $method" }
+        $ret = Invoke-CimMethod -Namespace root\StifleR -ClassName $class -Name $method -Arguments $params
+        
+        $areaid = $ret.ReturnValue
+        $x = New-CimInstance -ClassName $class -Namespace root\stifler -Property @{ "Id" = $areaid } -Key Id -ClientOnly
+        $Area = Get-CimInstance -CimInstance $x
+
+        return , $Area
+    }
+}
+
 function Add-Location($LocationName, $LocationDescription) {
     $class = "Locations"
     $method = "AddLocation"
@@ -154,12 +183,12 @@ function Add-Location($LocationName, $LocationDescription) {
         return 1
     }
     else {
-        #Add out location
+        #Add our location
         if ($verbose) { Write-Log -message "Calling Invoke-CimMethod to $class $method" }
         $ret = Invoke-CimMethod -Namespace root\StifleR -ClassName $class -Name $method -Arguments $params
         
         $locationid = $ret.ReturnValue
-        #Dont be this guy! This calls the enumerator for each call, if we have the ID, whe dont need to query!
+        #Don't be this guy! This calls the enumerator for each call, if we have the ID, we don't need to query!
         #$Location = Get-CimInstance -Namespace root\StifleR -Query "Select * from $class where id like '$locationid'"
         
         #This is MUCH faster, and does not slow down with larget lists. Key here is the -ClientOnly
@@ -249,20 +278,16 @@ Start-Log -FilePath "$($env:TEMP)\$([io.path]::GetFileNameWithoutExtension($MyIn
 
 #Script Execution goes here
 
-
-
 $networks = Import-Csv -Path $CSVPath -Encoding UTF8 -Delimiter $CSVDelimiter
 
-#$networks |Select-Object -Property AvailableBw_Old -Unique |Sort-Object -Property AvailableBw_Old
-
-$defaultTemplate = '00000000-0000-0000-0000-000000000012'
-
+$createdAreas = @{}
 $createdLocations = @{}
 $createdNetworkGroups = @{}
 $createdNetworks = @{}
 
 # $locations = $networks | Select-Object -Property SiteID, Country, City -Unique
-
+$class = "Areas"
+$currentAreas = Get-CimInstance -Namespace root\StifleR -Query "Select Name from $class" | Select-Object -Property Name, id | Sort-Object Name -unique
 $class = "Locations"
 $currentLocations = Get-CimInstance -Namespace root\StifleR -Query "Select LocationName from $class" | Select-Object -Property LocationName, id | Sort-Object LocationName -unique 
 #$class = "NetworkGroups"
@@ -270,20 +295,35 @@ $currentLocations = Get-CimInstance -Namespace root\StifleR -Query "Select Locat
 $class = "Networks"
 $currentNetworks = (Get-CimInstance -Namespace root\StifleR -Query "Select NetworkId,SubnetMask from $class" | Select-Object -Property NetworkId, SubnetMask) | ForEach-Object { "$($_.NetworkId),$($_.SubNetMask)" }  | Sort-Object -unique
 
-
+foreach ($cArea in $currentAreas) { $createdAreas.Add($cArea.Name, $cArea.id) }
 foreach ($cLoc in $currentLocations) { $createdLocations.Add($cLoc.LocationName, $cLoc.id) }
+#foreach ($cNetGrp in $currentNetworkGroups) { $createdNetworkGroups.Add($cNetGrp.Name, $cNetGrp.id) }
 
 # Start creating new locations.
 foreach ($net in $networks) {
 
-    If ($createdLocations["$($net.LOLocationName)"]) {
-        Write-host "Location $($net.LOLocationName) already exists, not creating.."
+    if($net.AreaName){
+        if ($createdAreas["$($net.AreaName)"]) {
+            Write-host "Area $($net.AreaName) already exists, not creating..."
+        }
+        else {
+            [System.Object]$newarea = Add-Area -AreaName $net.AreaName -AreaDescription $net.AreaDescription
+            write-host "Created new area type is $($newarea.GetType())"
+            $createdAreas.Add("$($net.AreaName)", $newarea.id)
+        }
+        $addToArea = $true
+    }
+    else {
+        Write-host "No area specified for $($net.LOLocationName), skipping area creation..."
+        $addToArea = $false
+    }
+
+    if ($createdLocations["$($net.LOLocationName)"]) {
+        Write-host "Location $($net.LOLocationName) already exists, not creating..."
        
         $class = "Locations"
         $x = New-CimInstance -ClassName $class -Namespace root\stifler -Property @{ "Id" = $($createdLocations["$($net.LOLocationName)"]) } -Key Id -ClientOnly
         [System.Object]$newlocation  = Get-CimInstance -CimInstance $x
-
-        #[System.Object]$newlocation = Get-CimInstance -Namespace root\StifleR -Query "Select * from $class where id = `'$($createdLocations["$($net.LOTown)/$($net.LOAddress)"])`'"
     }
     else {
         [System.Object]$newlocation = Add-Location "$($net.LOLocationName)" $net.LODescription
@@ -310,43 +350,26 @@ foreach ($net in $networks) {
         #Write the value changed back again
         $newlocation | Set-CimInstance 
 
+        # Add the location to the area
+        if ($addToArea) {
+            $params = @{
+                areaId = $createdAreas["$($net.AreaName)"]
+            }
+            Invoke-CimMethod -InputObject $newlocation -MethodName LinkAreaToLocation -Arguments $params
+        }
     }
     
     if ($createdNetworkGroups["$($net.NGName)"]) {
-        Write-host "NetworkGroups $($newlocation.NetworkGroups) already exists, not creating.."
+        Write-host "NetworkGroups $($newlocation.NetworkGroups) already exists, not creating..."
         $class = "NetworkGroups"
         $x = New-CimInstance -ClassName $class -Namespace root\stifler -Property @{ "Id" = $($createdNetworkGroups["$($net.NGName)"]) } -Key Id -ClientOnly
         [System.Object]$newNetgrp   = Get-CimInstance -CimInstance $x
-        #[System.Object]$newNetgrp = Get-CimInstance -Namespace root\StifleR -ClassName $class -Filter "id = '$($createdNetworkGroups["$($net.NGName)"])'"
-
-        #$newNetgrp = Get-CimInstance -Namespace root\StifleR -Query "Select * from $class where id = '$($newlocation.NetworkGroups)'"
     }
     else {
         [System.Object]$newNetgrp = Add-NetworkGroupToLocation $newlocation "$($net.NGName)" $net.NGDescription
         Write-host "Creating NetworkGroups "$($newNetgrp.Name)/$($newNetgrp.Description)""
         $createdNetworkGroups.Add("$($newNetgrp.Name)", $newNetgrp.id)
        
-
-        <#
-        $template = $null
-
-        if ($templateTableNew[$($net.AvailableBw_New)]) {
-            $template = $templateTableNew[$($net.AvailableBw_New)]
-        }
-        elseif ($templateTableOld[$($net.AvailableBw_Old)]) {
-            $template = $templateTableOld[$($net.AvailableBw_Old)]
-        }
-        else {
-            $template = $defaultTemplate
-        }
-            
-        $params = @{
-            Description = 'Testing WMI Update'
-        }
-        $newNetgrp = Get-CimInstance -Namespace root\StifleR -ClassName 'NetworkGroups' | Where-Object {$_.id -eq "$($newNetgrp.id)"}
-        Set-CimInstance -InputObject $newNetgrp -Property @{ Description = 'Testing WMI Update' } -Verbose
-        Get-CimInstance -Namespace root\StifleR -ClassName 'NetworkGroups' | Where-Object {$_.id -eq "$($newNetgrp.id)"} | Set-CimInstance -Property $params -Verbose
-        #>
         [string]$DOGroupId = ($newNetgrp.id).Trim()
         $params = @{
             DOGroupId = $DOGroupId
@@ -399,23 +422,13 @@ foreach ($net in $networks) {
         }
         else {
             [System.Object]$Network = Add-NetworkToNetworkGroup $newNetgrp $net.NWNetworkID $net.NWSubnetMask ""
-
-            
-
-
             $createdNetworks.Add($Network.id, $newNetgrp.id)
-       
         }
     }
     else {
         [System.Object]$Network = Add-NetworkToNetworkGroup $newNetgrp $net.NWNetworkID $net.NWSubnetMask ""
         $createdNetworks.Add($Network.id, $newNetgrp.id)
     }
-
-
-
-
-
 }
 
 # Workaround to fix templates not being properly set
@@ -424,4 +437,3 @@ $allTemplates = Get-CimInstance -Namespace root\StifleR -Query "Select * from $c
 foreach ($tmpl in $allTemplates) {
     $tmpl | Set-CimInstance
 }
-
