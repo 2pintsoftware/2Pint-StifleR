@@ -9,10 +9,11 @@
   Version:        1.1
   Author:         2Pint Team
   Creation Date:  Awhile ago, I don't recall
-  Last Update:    2026-10-14
+  Last Update:    2026.11.6
   Purpose/Change: 
     1.0 - Initial Release
-    1.1 - Added support for areas
+    26.10.14 - Added support for areas
+    26.11.6 - Fixed Duplicate NG issue
 
 .EXAMPLE
   Update the CSV Path then run the script.
@@ -290,14 +291,13 @@ $class = "Areas"
 $currentAreas = Get-CimInstance -Namespace root\StifleR -Query "Select Name from $class" | Select-Object -Property Name, id | Sort-Object Name -unique
 $class = "Locations"
 $currentLocations = Get-CimInstance -Namespace root\StifleR -Query "Select LocationName from $class" | Select-Object -Property LocationName, id | Sort-Object LocationName -unique 
-#$class = "NetworkGroups"
-#$currentNetworkGroups = (Get-CimInstance -Namespace root\StifleR -Query "Select Name from $class" | Select-Object -Property Name, Id) | Sort-Object Name -unique
+$class = "NetworkGroups"
+$currentNetworkGroups = Get-CimInstance -Namespace root\StifleR -ClassName $class
 $class = "Networks"
 $currentNetworks = (Get-CimInstance -Namespace root\StifleR -Query "Select NetworkId,SubnetMask from $class" | Select-Object -Property NetworkId, SubnetMask) | ForEach-Object { "$($_.NetworkId),$($_.SubNetMask)" }  | Sort-Object -unique
 
 foreach ($cArea in $currentAreas) { $createdAreas.Add($cArea.Name, $cArea.id) }
 foreach ($cLoc in $currentLocations) { $createdLocations.Add($cLoc.LocationName, $cLoc.id) }
-#foreach ($cNetGrp in $currentNetworkGroups) { $createdNetworkGroups.Add($cNetGrp.Name, $cNetGrp.id) }
 
 # Start creating new locations.
 foreach ($net in $networks) {
@@ -359,16 +359,26 @@ foreach ($net in $networks) {
         }
     }
     
-    if ($createdNetworkGroups["$($net.NGName)"]) {
-        Write-host "NetworkGroups $($newlocation.NetworkGroups) already exists, not creating..."
-        $class = "NetworkGroups"
-        $x = New-CimInstance -ClassName $class -Namespace root\stifler -Property @{ "Id" = $($createdNetworkGroups["$($net.NGName)"]) } -Key Id -ClientOnly
-        [System.Object]$newNetgrp   = Get-CimInstance -CimInstance $x
+    $networkGroupKey = "$($newlocation.Id)|$($net.NGName)"
+    $locationNetworkGroupIds = @($newlocation.NetworkGroups | ForEach-Object { "$_".Trim() })
+    $existingNetworkGroup = $currentNetworkGroups | Where-Object {
+        $_.Name -eq $net.NGName -and $locationNetworkGroupIds -contains "$($_.Id)"
+    } | Select-Object -First 1
+
+    if ($createdNetworkGroups.ContainsKey($networkGroupKey)) {
+        $networkGroupId = $createdNetworkGroups[$networkGroupKey]
+        $x = New-CimInstance -ClassName "NetworkGroups" -Namespace root\stifler -Property @{ "Id" = $networkGroupId } -Key Id -ClientOnly
+        [System.Object]$newNetgrp = Get-CimInstance -CimInstance $x
+    }
+    elseif ($existingNetworkGroup) {
+        Write-host "NetworkGroup $($net.NGName) already exists in location $($net.LOLocationName), not creating..."
+        [System.Object]$newNetgrp = $existingNetworkGroup
+        $createdNetworkGroups[$networkGroupKey] = $newNetgrp.Id
     }
     else {
         [System.Object]$newNetgrp = Add-NetworkGroupToLocation $newlocation "$($net.NGName)" $net.NGDescription
         Write-host "Creating NetworkGroups "$($newNetgrp.Name)/$($newNetgrp.Description)""
-        $createdNetworkGroups.Add("$($newNetgrp.Name)", $newNetgrp.id)
+        $createdNetworkGroups[$networkGroupKey] = $newNetgrp.Id
        
         [string]$DOGroupId = ($newNetgrp.id).Trim()
         $params = @{
@@ -410,8 +420,6 @@ foreach ($net in $networks) {
         }
         $ret = Invoke-CimMethod -InputObject $newNetgrp -MethodName SetTemplate -Arguments $params
         }
-
-        $createdNetworkGroups.Add($newNetgrp.id, $newlocation.id)
 
     }
 
